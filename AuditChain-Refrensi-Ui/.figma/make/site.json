@@ -1,0 +1,10 @@
+{
+  "description": "Monitor database audit logs with real-time activity tracking, integrity issue alerts, and contextual recovery tools for efficient client data management.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

@@ -1,0 +1,112 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
+
+  --color-ground: #07111e;
+  --color-panel: #0c1929;
+  --color-panel-2: #102036;
+  --color-elevated: #16283e;
+  --color-line: rgba(255, 255, 255, 0.07);
+  --color-line-strong: rgba(255, 255, 255, 0.13);
+
+  --color-ink: #e7eef7;
+  --color-ink-dim: #9fb0c4;
+  --color-ink-faint: #61748c;
+
+  --color-navy: #113a7a;
+  --color-navy-bright: #2f6fd0;
+  --color-brand: #16a565;
+  --color-brand-bright: #22c47c;
+  --color-success: #22c47c;
+  --color-danger: #f0555c;
+  --color-warning: #f5a524;
+  --color-info: #4a92ec;
+  --color-delete: #f0555c;
+  --color-accent: #4a92ec;
+}
+
+:root {
+  color-scheme: dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: var(--color-ground);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv02", "cv03", "cv04", "ss01";
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+}
+
+.field-control {
+  width: 100%;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 0.5rem;
+  background: var(--color-ground);
+  padding: 0.65rem 0.75rem;
+  color: var(--color-ink);
+  font-size: 0.8125rem;
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.field-control::placeholder {
+  color: var(--color-ink-faint);
+}
+
+.field-control:focus {
+  border-color: var(--color-navy-bright);
+  box-shadow: 0 0 0 3px rgba(47, 111, 208, 0.12);
+}
+
+.login-grid::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  opacity: 0.42;
+  background-image: linear-gradient(var(--color-line) 1px, transparent 1px), linear-gradient(90deg, var(--color-line) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(circle at 50% 40%, black, transparent 76%);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
