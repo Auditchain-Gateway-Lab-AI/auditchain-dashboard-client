@@ -29,7 +29,7 @@ export function LoginPage() {
     formState: { errors },
   } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { username: "morbis1", password: "" },
+    defaultValues: { username: "", password: "" },
   });
 
   if (session) return <Navigate to="/monitor" replace />;
@@ -61,7 +61,7 @@ export function LoginPage() {
             Integrity monitoring for every <span className="text-brand-bright">critical record.</span>
           </h1>
           <p className="mt-4 max-w-md text-sm leading-relaxed text-ink-dim">
-            A compact, read-only view of audit health, verification status, and incidents across your monitored SIMRS tables.
+            A compact, read-only view of audit health, verification status, and incidents across your monitored data sources.
           </p>
           <div className="mt-8 flex flex-wrap gap-5 text-[9px] font-semibold uppercase tracking-[0.14em] text-ink-faint">
             <span className="flex items-center gap-1.5"><ShieldCheck className="size-3 text-success" /> Tamper-evident</span>
@@ -77,7 +77,9 @@ export function LoginPage() {
           </div>
           <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-brand-bright">Client Portal</div>
           <h2 className="mt-1 text-2xl font-semibold tracking-tight text-ink">Sign in to your workspace</h2>
-          <p className="mt-1.5 text-xs text-ink-dim">SIMRS Morbis 1 · RSUD Morbis — POLINEMA</p>
+          <p className="mt-1.5 max-w-sm text-xs leading-relaxed text-ink-dim">
+            Use the credentials issued by your organization. Your workspace is assigned securely after sign-in.
+          </p>
 
           <form className="mt-7 space-y-4" onSubmit={(event) => void onSubmit(event)} noValidate>
             <Field label="Username" htmlFor="username" error={errors.username?.message}>
@@ -113,12 +115,12 @@ export function LoginPage() {
               <div role="alert" className="rounded-lg border border-danger/25 bg-danger/10 px-3 py-2.5 text-[11px] text-danger">{errors.root.message}</div>
             )}
             <Button type="submit" className="mt-1 w-full" disabled={isLoggingIn}>
-              <LockKeyhole className="size-4" /> {isLoggingIn ? "Signing in…" : "Enter Audit Monitor"}
+              <LockKeyhole className="size-4" /> {isLoggingIn ? "Signing in…" : "Sign in securely"}
             </Button>
           </form>
 
           <div className="mt-5 flex items-center justify-between gap-3 border-t border-line pt-4 text-[9px] text-ink-faint">
-            <span>Demo: morbis1 / password</span>
+            <span>Demo: client-demo / password</span>
             <span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-success" /> Mock service ready</span>
           </div>
         </section>

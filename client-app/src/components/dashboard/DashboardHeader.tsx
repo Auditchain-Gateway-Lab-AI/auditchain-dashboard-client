@@ -15,6 +15,7 @@ interface DashboardHeaderProps {
 
 export function DashboardHeader({ tenant, organization, updatedAt, isRefreshing, onRefresh }: DashboardHeaderProps) {
   const { session, logout } = useAuth();
+  const avatarLabel = getInitials(session?.user.displayName);
 
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-panel/95 backdrop-blur-xl">
@@ -63,7 +64,7 @@ export function DashboardHeader({ tenant, organization, updatedAt, isRefreshing,
               <div className="text-[11px] font-semibold text-ink">{session?.user.displayName}</div>
               <div className="text-[9px] text-ink-faint">{session?.user.role}</div>
             </div>
-            <div className="flex size-8 items-center justify-center rounded-full bg-navy text-[10px] font-bold text-white">MB</div>
+            <div className="flex size-8 items-center justify-center rounded-full bg-navy text-[10px] font-bold text-white">{avatarLabel}</div>
           </div>
           <Button variant="ghost" size="icon" onClick={() => void logout()} aria-label="Sign out">
             <LogOut className="size-4" />
@@ -79,6 +80,19 @@ export function DashboardHeader({ tenant, organization, updatedAt, isRefreshing,
       </div>
     </header>
   );
+}
+
+function getInitials(displayName?: string) {
+  const initials = displayName
+    ?.trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+  return initials || "AC";
 }
 
 function PortalNavLink({ to, children, compact = false }: { to: string; children: React.ReactNode; compact?: boolean }) {
