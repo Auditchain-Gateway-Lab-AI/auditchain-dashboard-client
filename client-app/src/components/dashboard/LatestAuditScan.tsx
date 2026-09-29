@@ -1,4 +1,5 @@
 import { Clock3, ServerCog, ShieldCheck } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatNumber } from "@/lib/utils";
@@ -47,7 +48,7 @@ export function LatestAuditScan({ data }: { data: LatestAuditScanData }) {
   );
 }
 
-function Metric({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
+function Metric({ label, value, icon }: { label: string; value: string; icon: ReactNode }) {
   return (
     <div className="rounded-lg border border-line bg-ground px-3 py-2.5">
       <div className="flex items-center justify-between text-[9px] uppercase tracking-[0.1em] text-ink-faint">{label}{icon}</div>

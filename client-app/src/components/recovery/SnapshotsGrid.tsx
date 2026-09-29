@@ -1,4 +1,5 @@
 import { Camera, CheckCircle2, Database } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -36,6 +37,6 @@ export function SnapshotsGrid({ data }: { data: RecoverySnapshot[] }) {
   );
 }
 
-function Line({ label, value, mono, icon }: { label: string; value: string; mono?: boolean; icon?: React.ReactNode }) {
+function Line({ label, value, mono, icon }: { label: string; value: string; mono?: boolean; icon?: ReactNode }) {
   return <div className="flex items-center justify-between gap-3"><dt className="flex items-center gap-1.5 text-ink-faint">{icon}{label}</dt><dd className={cn("text-right text-ink-dim", mono && "font-mono")}>{value}</dd></div>;
 }

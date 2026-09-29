@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import type { ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/panel-state";
 import { cn } from "@/lib/utils";
@@ -45,10 +46,10 @@ export function RecoveryHistory({ data }: { data: RecoveryJob[] }) {
   );
 }
 
-function Head({ className, children }: { className?: string; children: React.ReactNode }) {
+function Head({ className, children }: { className?: string; children: ReactNode }) {
   return <th className={cn("px-3.5 py-2.5 text-right font-semibold", className)}>{children}</th>;
 }
 
-function Cell({ className, children }: { className?: string; children: React.ReactNode }) {
+function Cell({ className, children }: { className?: string; children: ReactNode }) {
   return <td className={cn("px-3.5 py-3", className)}>{children}</td>;
 }

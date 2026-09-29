@@ -1,4 +1,5 @@
 import { LogOut, RotateCw, ShieldCheck } from "lucide-react";
+import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
@@ -95,7 +96,7 @@ function getInitials(displayName?: string) {
   return initials || "AC";
 }
 
-function PortalNavLink({ to, children, compact = false }: { to: string; children: React.ReactNode; compact?: boolean }) {
+function PortalNavLink({ to, children, compact = false }: { to: string; children: ReactNode; compact?: boolean }) {
   return (
     <NavLink
       to={to}
