@@ -16,7 +16,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/panel-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useIntegrityTrend } from "@/hooks/useDashboard";
-import { cn } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
+import { dashboardMockEnabled } from "@/services/dashboard";
 import type { TrendRange, TrendTab } from "@/types/dashboard";
 
 const ranges: TrendRange[] = ["8H", "24H", "7D", "30D"];
@@ -29,9 +30,14 @@ export function IntegrityTrend() {
   const [range, setRange] = useState<TrendRange>("8H");
   const [tab, setTab] = useState<TrendTab>("INTEGRITY");
   const trend = useIntegrityTrend(range);
+  const sampleSize = trend.data?.[0]?.sampleSize ?? 0;
+  const totalItems = trend.data?.[0]?.totalItems ?? 0;
+  const sourceLabel = dashboardMockEnabled
+    ? `Mock service - ${range}`
+    : `Live audit sample ${formatNumber(sampleSize)}${totalItems > sampleSize ? `/${formatNumber(totalItems)}` : ""} - ${range}`;
 
   return (
-    <Card className="h-full overflow-hidden">
+    <Card className="flex h-full flex-col overflow-hidden">
       <CardHeader className="flex-wrap py-2">
         <div className="flex items-center gap-4">
           <CardTitle>Integrity Trend</CardTitle>
@@ -70,11 +76,11 @@ export function IntegrityTrend() {
           ))}
         </div>
       </CardHeader>
-      <CardContent className="p-3">
+      <CardContent className="flex min-h-0 flex-1 flex-col p-3">
         {trend.isPending ? (
           <Skeleton className="h-[246px] w-full" />
-        ) : !trend.data?.length ? (
-          <EmptyState message="No trend data for this range." />
+        ) : trend.isError || !trend.data?.length ? (
+          <EmptyState message={trend.isError ? "Integrity trend is currently unavailable." : "No trend data for this range."} />
         ) : (
           <>
             <div className="mb-2 flex items-center justify-between">
@@ -92,9 +98,9 @@ export function IntegrityTrend() {
                   </>
                 )}
               </div>
-              <span className="text-[8px] uppercase tracking-[0.1em] text-ink-faint">Mock service · {range}</span>
+              <span className="text-[8px] uppercase tracking-[0.1em] text-ink-faint">{sourceLabel}</span>
             </div>
-            <div className="h-[224px] min-w-0">
+            <div className="min-h-[224px] min-w-0 flex-1">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={trend.data} margin={{ top: 8, right: 4, bottom: 0, left: -20 }}>
                   <defs>

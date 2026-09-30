@@ -15,7 +15,7 @@ const levelTone: Record<ActivityLevel, string> = {
 
 export function TableWatchlist({ data }: { data: WatchlistItem[] }) {
   return (
-    <Card className="h-full overflow-hidden">
+    <Card className="h-full max-h-[29rem] overflow-hidden">
       <CardHeader>
         <CardTitle>Table Watchlist</CardTitle>
         <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-ink-faint">{data.length} tracked</span>
@@ -24,9 +24,9 @@ export function TableWatchlist({ data }: { data: WatchlistItem[] }) {
         {data.length === 0 ? (
           <EmptyState message="No monitored tables." />
         ) : (
-          <div className="overflow-x-auto">
+          <div className="max-h-[25rem] overflow-auto overscroll-contain">
             <table className="w-full min-w-[570px] border-collapse text-[11px]">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-panel">
                 <tr className="text-[9px] uppercase tracking-[0.09em] text-ink-faint">
                   <TableHead className="text-left">Table</TableHead>
                   <TableHead>Logs</TableHead>

@@ -13,6 +13,7 @@ import type {
   VerificationRangeEstimate,
   VerificationRangeInput,
   VerificationRangeResult,
+  VerificationRun,
 } from "@/types/dashboard";
 
 const wait = (duration = 280) => new Promise((resolve) => window.setTimeout(resolve, duration));
@@ -27,7 +28,7 @@ export class MockDashboardService implements DashboardService {
     return respond(dashboardOverviewMock, 260);
   }
 
-  getIntegrityTrend(range: TrendRange) {
+  getIntegrityTrend(range: TrendRange, _token?: string) {
     return respond(buildTrendMock(range), 320);
   }
 
@@ -48,6 +49,10 @@ export class MockDashboardService implements DashboardService {
       range,
       summary: { total: 10, valid: 9, invalid: 1, pending: 0 },
     }, 420);
+  }
+
+  getLatestVerificationRun(_token?: string) {
+    return respond<VerificationRun | null>(null, 220);
   }
 
   getLatestScan() {
