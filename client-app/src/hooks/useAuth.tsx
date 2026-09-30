@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createContext, useContext, type PropsWithChildren } from "react";
+import { createContext, useContext, useEffect, type PropsWithChildren } from "react";
 
+import { API_UNAUTHORIZED_EVENT } from "@/services/api/client";
 import { authService } from "@/services/auth";
 import type { AuthSession, LoginCredentials } from "@/types/auth";
 
@@ -25,7 +26,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   const loginMutation = useMutation({
     mutationFn: (credentials: LoginCredentials) => authService.login(credentials),
-    onSuccess: (session) => queryClient.setQueryData(AUTH_QUERY_KEY, session),
+    onSuccess: (session) => {
+      queryClient.setQueryData(AUTH_QUERY_KEY, session);
+      queryClient.removeQueries({ queryKey: ["dashboard"] });
+      queryClient.removeQueries({ queryKey: ["recovery"] });
+    },
   });
 
   const logoutMutation = useMutation({
@@ -33,8 +38,21 @@ export function AuthProvider({ children }: PropsWithChildren) {
     onSuccess: () => {
       queryClient.setQueryData(AUTH_QUERY_KEY, null);
       queryClient.removeQueries({ queryKey: ["dashboard"] });
+      queryClient.removeQueries({ queryKey: ["recovery"] });
     },
   });
+
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      void authService.logout();
+      queryClient.setQueryData(AUTH_QUERY_KEY, null);
+      queryClient.removeQueries({ queryKey: ["dashboard"] });
+      queryClient.removeQueries({ queryKey: ["recovery"] });
+    };
+
+    window.addEventListener(API_UNAUTHORIZED_EVENT, handleUnauthorized);
+    return () => window.removeEventListener(API_UNAUTHORIZED_EVENT, handleUnauthorized);
+  }, [queryClient]);
 
   return (
     <AuthContext.Provider

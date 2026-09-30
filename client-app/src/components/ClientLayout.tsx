@@ -8,14 +8,15 @@ import { dashboardService } from "@/services/dashboard";
 
 export function ClientLayout() {
   const { session } = useAuth();
+  const workspace = session?.user.workspace;
   const overview = useQuery({
     queryKey: dashboardKeys.overview,
-    queryFn: () => dashboardService.getOverview(),
+    queryFn: () => dashboardService.getOverview(session?.token, workspace),
+    enabled: Boolean(session?.token),
     refetchInterval: 60_000,
   });
   const refresh = useClientRefresh();
   const fetching = useIsFetching({ queryKey: ["dashboard"] }) + useIsFetching({ queryKey: ["recovery"] });
-  const workspace = session?.user.workspace;
 
   return (
     <div className="min-h-screen bg-ground">

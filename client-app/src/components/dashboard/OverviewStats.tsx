@@ -9,36 +9,34 @@ interface Kpi {
   value: string;
   subvalue?: string;
   icon: typeof Database;
-  tone?: "success" | "danger";
+  tone?: "success" | "danger" | "warning";
 }
 
 export function OverviewStats({ data }: { data: DashboardOverview }) {
   const stats: Kpi[] = [
     { label: "Total Logs", value: formatNumber(data.totalLogs), icon: Database },
-    { label: "Valid", value: formatNumber(data.valid), subvalue: `${data.validPercentage.toFixed(2)}%`, icon: ShieldCheck, tone: "success" },
-    { label: "Tampered", value: formatNumber(data.tampered), subvalue: `${data.tamperedPercentage.toFixed(2)}%`, icon: ShieldAlert, tone: "danger" },
+    { label: "Anchored Logs", value: formatNumber(data.anchoredLogs), subvalue: `${data.anchorPercentage.toFixed(2)}%`, icon: ShieldCheck, tone: "success" },
+    { label: "Pending Logs", value: formatNumber(data.pendingLogs), icon: Clock3, tone: "warning" },
+    { label: "Integrity Score", value: formatScore(data.integrityScore), subvalue: data.totalVerifications ? `${formatNumber(data.totalVerifications)} checks` : undefined, icon: ShieldCheck, tone: "success" },
+    { label: "Valid Checks", value: formatNumber(data.valid), subvalue: `${data.validPercentage.toFixed(2)}%`, icon: ShieldCheck, tone: "success" },
+    { label: "Tampered Checks", value: formatNumber(data.tampered), subvalue: `${data.tamperedPercentage.toFixed(2)}%`, icon: ShieldAlert, tone: "danger" },
     { label: "Logs Today", value: formatNumber(data.logsToday), icon: Activity },
-    { label: "Monitored Tables", value: String(data.monitoredTables), icon: FileStack },
-    { label: "Last Scan", value: data.lastScan, icon: Clock3 },
+    { label: "Tables Audited", value: data.monitoredTables === null ? "N/A" : String(data.monitoredTables), icon: FileStack },
+    { label: "Last Verified", value: data.lastScan, icon: Clock3 },
   ];
 
   return (
-    <Card className="grid grid-cols-2 overflow-hidden sm:grid-cols-3 xl:grid-cols-6">
-      {stats.map((stat, index) => {
+    <Card className="grid grid-cols-2 gap-px overflow-hidden bg-line sm:grid-cols-3 lg:grid-cols-5 2xl:grid-cols-9">
+      {stats.map((stat) => {
         const Icon = stat.icon;
         return (
           <div
             key={stat.label}
             className={cn(
-              "relative min-w-0 border-line px-3.5 py-3.5",
-              index % 2 !== 0 && "border-l",
-              index >= 2 && "border-t sm:border-t-0",
-              index % 3 !== 0 && "sm:border-l",
-              index >= 3 && "sm:border-t",
-              "xl:border-t-0",
-              index !== 0 && "xl:border-l",
+              "relative min-w-0 bg-panel px-3.5 py-3.5",
               stat.tone === "success" && "bg-success/[0.055]",
               stat.tone === "danger" && "bg-danger/[0.055]",
+              stat.tone === "warning" && "bg-warning/[0.055]",
             )}
           >
             <Icon
@@ -46,6 +44,7 @@ export function OverviewStats({ data }: { data: DashboardOverview }) {
                 "absolute right-3 top-3 size-4 text-ink-faint",
                 stat.tone === "success" && "text-success/70",
                 stat.tone === "danger" && "text-danger/70",
+                stat.tone === "warning" && "text-warning/70",
               )}
             />
             <div
@@ -53,6 +52,7 @@ export function OverviewStats({ data }: { data: DashboardOverview }) {
                 "pr-5 text-[9px] font-semibold uppercase tracking-[0.12em] text-ink-faint",
                 stat.tone === "success" && "text-success",
                 stat.tone === "danger" && "text-danger",
+                stat.tone === "warning" && "text-warning",
               )}
             >
               {stat.label}
@@ -63,6 +63,7 @@ export function OverviewStats({ data }: { data: DashboardOverview }) {
                   "font-mono text-xl font-semibold leading-none text-ink",
                   stat.tone === "success" && "text-[22px] text-success",
                   stat.tone === "danger" && "text-[22px] text-danger",
+                  stat.tone === "warning" && "text-[22px] text-warning",
                 )}
               >
                 {stat.value}
@@ -74,4 +75,8 @@ export function OverviewStats({ data }: { data: DashboardOverview }) {
       })}
     </Card>
   );
+}
+
+function formatScore(value: number | null) {
+  return value === null ? "N/A" : `${value.toFixed(2)}%`;
 }

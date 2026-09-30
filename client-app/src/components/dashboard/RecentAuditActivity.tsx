@@ -9,7 +9,16 @@ const actionClass: Record<AuditAction, string> = {
   INSERT: "text-success",
   UPDATE: "text-info",
   DELETE: "text-danger",
+  OTHER: "text-ink-dim",
 };
+
+const statusTone = {
+  VALID: "success",
+  TAMPERED: "danger",
+  PENDING: "warning",
+  UNAVAILABLE: "warning",
+  NOT_CHECKED: "neutral",
+} as const;
 
 export function RecentAuditActivity({ data }: { data: AuditActivity[] }) {
   return (
@@ -37,7 +46,7 @@ export function RecentAuditActivity({ data }: { data: AuditActivity[] }) {
                     <Cell className={cn("font-mono text-[9px] font-semibold", actionClass[event.action])}>{event.action}</Cell>
                     <Cell className="font-mono text-ink-dim">{event.record}</Cell>
                     <Cell className="font-mono text-ink-faint">{event.actor}</Cell>
-                    <Cell className="text-right"><Badge tone={event.status === "VALID" ? "success" : "danger"}>{event.status}</Badge></Cell>
+                    <Cell className="text-right"><Badge tone={statusTone[event.status]}>{event.status}</Badge></Cell>
                   </tr>
                 ))}
               </tbody>

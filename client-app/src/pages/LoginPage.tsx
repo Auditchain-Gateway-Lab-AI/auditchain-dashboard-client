@@ -21,7 +21,9 @@ export function LoginPage() {
   const { session, login, isLoggingIn } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as { from?: string } | null)?.from ?? "/monitor";
+  const requestedPath = (location.state as { from?: string } | null)?.from;
+  const from = requestedPath?.startsWith("/") && !requestedPath.startsWith("//") ? requestedPath : "/monitor";
+  const gatewayPortalUrl = import.meta.env.VITE_GATEWAY_PORTAL_URL;
   const {
     register,
     handleSubmit,
@@ -119,9 +121,13 @@ export function LoginPage() {
             </Button>
           </form>
 
-          <div className="mt-5 flex items-center justify-between gap-3 border-t border-line pt-4 text-[9px] text-ink-faint">
-            <span>Demo: client-demo / password</span>
-            <span className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-success" /> Mock service ready</span>
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4 text-[9px] text-ink-faint">
+            <span>Credentials are issued by your organization.</span>
+            {gatewayPortalUrl && (
+              <a href={gatewayPortalUrl} className="font-semibold text-brand-bright hover:text-ink" target="_blank" rel="noreferrer">
+                Gateway Admin Portal
+              </a>
+            )}
           </div>
         </section>
       </div>
