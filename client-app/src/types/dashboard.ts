@@ -108,6 +108,8 @@ export interface TrendPoint {
   insert: number;
   update: number;
   delete: number;
+  sampleSize?: number;
+  totalItems?: number;
 }
 
 export interface LatestAuditScan {

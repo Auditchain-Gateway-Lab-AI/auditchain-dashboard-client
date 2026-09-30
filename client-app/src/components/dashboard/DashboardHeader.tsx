@@ -50,7 +50,7 @@ export function DashboardHeader({ tenant, organization, updatedAt, isRefreshing,
               Updated <span className="font-semibold text-ink-dim">{formatTime(updatedAt)}</span>
             </div>
             <div className="mt-0.5 flex items-center justify-end gap-1.5 text-[9px] uppercase tracking-[0.09em] text-ink-faint">
-              <span className="size-1.5 rounded-full bg-success" /> Auto refresh 60s
+              <span className="size-1.5 rounded-full bg-success" /> Live sync
             </div>
           </div>
 

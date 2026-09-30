@@ -11,7 +11,9 @@ export const dashboardService: DashboardService = {
   getRecentActivity: (token, limit) => dashboardMockEnabled
     ? mockDashboardService.getRecentActivity(token, limit)
     : apiDashboardService.getRecentActivity(token, limit),
-  getIntegrityTrend: (range) => mockDashboardService.getIntegrityTrend(range),
+  getIntegrityTrend: (range, token) => dashboardMockEnabled
+    ? mockDashboardService.getIntegrityTrend(range, token)
+    : apiDashboardService.getIntegrityTrend(range, token),
   getTables: () => mockDashboardService.getTables(),
   getInventory: (token) => dashboardMockEnabled
     ? mockDashboardService.getInventory(token)

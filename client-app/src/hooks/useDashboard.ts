@@ -68,6 +68,7 @@ export function useDashboardData() {
       queryClient.invalidateQueries({ queryKey: dashboardKeys.overview }),
       queryClient.invalidateQueries({ queryKey: dashboardKeys.inventory }),
       queryClient.invalidateQueries({ queryKey: dashboardKeys.activity }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard", "trend"] }),
     ]);
   }, [queryClient, verificationRun.data]);
 
@@ -90,10 +91,12 @@ export function useDashboardData() {
 }
 
 export function useIntegrityTrend(range: TrendRange) {
+  const { session } = useAuth();
   return useQuery({
     queryKey: dashboardKeys.trend(range),
-    queryFn: () => dashboardService.getIntegrityTrend(range),
-    enabled: dashboardMockEnabled,
+    queryFn: () => dashboardService.getIntegrityTrend(range, session?.token),
+    enabled: dashboardMockEnabled || Boolean(session?.token),
+    refetchInterval: dashboardMockEnabled ? false : 60_000,
   });
 }
 

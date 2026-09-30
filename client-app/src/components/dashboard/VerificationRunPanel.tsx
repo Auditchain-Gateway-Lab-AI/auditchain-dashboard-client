@@ -12,7 +12,7 @@ export function VerificationRunPanel({ data }: { data: VerificationRun | null })
   const statusTone = status === "FAILED" ? "danger" : status === "COMPLETED" ? "success" : "info";
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="h-full overflow-hidden">
       <CardHeader className="flex-wrap items-start">
         <div className="flex min-w-0 items-start gap-2.5">
           <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-info/20 bg-info/10 text-info">

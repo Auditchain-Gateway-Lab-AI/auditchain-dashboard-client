@@ -7,6 +7,8 @@ import type {
   DashboardOverview,
   TableInventoryItem,
   TableVerificationSummary,
+  TrendPoint,
+  TrendRange,
   VerificationRangeEstimate,
   VerificationRangeInput,
   VerificationRangeResult,
@@ -55,6 +57,9 @@ interface BackendAuditLog {
 
 interface RecentLogsResponse {
   data?: BackendAuditLog[];
+  pagination?: {
+    total_items?: number;
+  };
 }
 
 interface BackendInventoryItem {
@@ -179,6 +184,86 @@ function formatActivityTime(value: unknown) {
   }).format(date);
 }
 
+function getTrendWindow(range: TrendRange) {
+  const durations: Record<TrendRange, { durationMs: number; buckets: number }> = {
+    "8H": { durationMs: 8 * 60 * 60 * 1000, buckets: 8 },
+    "24H": { durationMs: 24 * 60 * 60 * 1000, buckets: 12 },
+    "7D": { durationMs: 7 * 24 * 60 * 60 * 1000, buckets: 7 },
+    "30D": { durationMs: 30 * 24 * 60 * 60 * 1000, buckets: 10 },
+  };
+  const now = new Date();
+  const config = durations[range];
+  return {
+    from: new Date(now.getTime() - config.durationMs),
+    to: now,
+    buckets: config.buckets,
+    bucketMs: config.durationMs / config.buckets,
+  };
+}
+
+function formatTrendLabel(value: Date, range: TrendRange) {
+  const options: Intl.DateTimeFormatOptions = range === "7D" || range === "30D"
+    ? { day: "2-digit", month: "short" }
+    : { hour: "2-digit", minute: "2-digit", hour12: false };
+  return new Intl.DateTimeFormat("en-GB", options).format(value);
+}
+
+function buildIntegrityTrend(rows: BackendAuditLog[], range: TrendRange, totalItems: number): Array<{
+  label: string;
+  valid: number;
+  tampered: number;
+  insert: number;
+  update: number;
+  delete: number;
+  sampleSize: number;
+  totalItems: number;
+}> {
+  if (rows.length === 0) return [];
+
+  const window = getTrendWindow(range);
+  const points = Array.from({ length: window.buckets }, (_, index) => ({
+    label: formatTrendLabel(new Date(window.from.getTime() + index * window.bucketMs), range),
+    valid: 0,
+    tampered: 0,
+    insert: 0,
+    update: 0,
+    delete: 0,
+    sampleSize: rows.length,
+    totalItems,
+  }));
+
+  for (const row of rows) {
+    const timestamp = new Date(String(row.timestamp ?? "")).getTime();
+    if (!Number.isFinite(timestamp)) continue;
+    const index = Math.min(
+      window.buckets - 1,
+      Math.max(0, Math.floor((timestamp - window.from.getTime()) / window.bucketMs)),
+    );
+    const point = points[index];
+    if (!point) continue;
+    const status = String(row.integrity_status ?? "").trim().toLowerCase();
+    const action = normalizeAction(row.action).toLowerCase();
+
+    if (status === "valid") point.valid += 1;
+    if (status === "tampered") point.tampered += 1;
+    switch (action) {
+      case "insert":
+        point.insert += 1;
+        break;
+      case "update":
+        point.update += 1;
+        break;
+      case "delete":
+        point.delete += 1;
+        break;
+      default:
+        break;
+    }
+  }
+
+  return points;
+}
+
 function rangeQuery(range: VerificationRangeInput) {
   const params = new URLSearchParams({ from: range.from, to: range.to });
   return params.toString();
@@ -292,6 +377,21 @@ export class ApiDashboardService {
       rowsVerified: asNumber(data.total_rows_verified),
       tableVerification: mapTableVerification(data.table_verify_results),
     };
+  }
+
+  async getIntegrityTrend(range: TrendRange, token?: string): Promise<TrendPoint[]> {
+    if (!token) throw new Error("Session client tidak tersedia.");
+
+    const window = getTrendWindow(range);
+    const params = new URLSearchParams({
+      page: "1",
+      page_size: "100",
+      sort_order: "asc",
+      from: window.from.toISOString(),
+      to: window.to.toISOString(),
+    });
+    const response = await apiClient.get<RecentLogsResponse>(`/dashboard/logs?${params.toString()}`, token);
+    return buildIntegrityTrend(response.data ?? [], range, asNumber(response.pagination?.total_items));
   }
 
   async getRecentActivity(token?: string, limit = 10): Promise<AuditActivity[]> {

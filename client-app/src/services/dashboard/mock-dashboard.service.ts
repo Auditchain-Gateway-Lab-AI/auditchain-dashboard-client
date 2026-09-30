@@ -28,7 +28,7 @@ export class MockDashboardService implements DashboardService {
     return respond(dashboardOverviewMock, 260);
   }
 
-  getIntegrityTrend(range: TrendRange) {
+  getIntegrityTrend(range: TrendRange, _token?: string) {
     return respond(buildTrendMock(range), 320);
   }
 

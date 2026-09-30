@@ -17,7 +17,7 @@ import type { ClientWorkspace } from "@/types/auth";
 
 export interface DashboardService {
   getOverview(token?: string, workspace?: Pick<ClientWorkspace, "name" | "organization">): Promise<DashboardOverview>;
-  getIntegrityTrend(range: TrendRange): Promise<TrendPoint[]>;
+  getIntegrityTrend(range: TrendRange, token?: string): Promise<TrendPoint[]>;
   getTables(): Promise<WatchlistItem[]>;
   getInventory(token?: string): Promise<TableInventoryItem[]>;
   estimateVerifyRange(token: string | undefined, range: VerificationRangeInput): Promise<VerificationRangeEstimate>;

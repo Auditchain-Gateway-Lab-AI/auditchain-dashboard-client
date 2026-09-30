@@ -7,8 +7,10 @@ import { cn, formatNumber } from "@/lib/utils";
 import type { DashboardOverview, TableInventoryItem } from "@/types/dashboard";
 
 export function TableInventory({ data, overview }: { data: TableInventoryItem[]; overview: DashboardOverview }) {
+  const unavailableValue = <span className="text-ink-faint">-</span>;
+
   return (
-    <Card className="h-full overflow-hidden">
+    <Card className="h-full max-h-[29rem] overflow-hidden">
       <CardHeader>
         <CardTitle>Table Watchlist</CardTitle>
         <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-ink-faint">{data.length} tracked</span>
@@ -17,9 +19,9 @@ export function TableInventory({ data, overview }: { data: TableInventoryItem[];
         {data.length === 0 ? (
           <EmptyState message="No monitored tables." />
         ) : (
-          <div className="overflow-x-auto">
+          <div className="max-h-[25rem] overflow-auto overscroll-contain">
             <table className="w-full min-w-[540px] border-collapse text-[10px]">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-panel">
                 <tr className="text-[9px] uppercase tracking-[0.08em] text-ink-faint">
                   <Head className="text-left">Table</Head>
                   <Head>Rows tracked</Head>
@@ -38,9 +40,9 @@ export function TableInventory({ data, overview }: { data: TableInventoryItem[];
                     <tr key={item.table} className="border-t border-line">
                       <Cell className="font-mono font-semibold text-ink">{item.table}</Cell>
                       <Cell className="text-right font-mono text-ink">{formatNumber(item.rows)}</Cell>
-                      <Cell className="text-right font-mono text-ink-dim">{verification ? formatNumber(checked) : "N/A"}</Cell>
-                      <Cell className={cn("text-right font-mono font-semibold", integrity !== null && (verification?.invalid ?? 0) > 0 ? "text-danger" : "text-ink-dim")}>{integrity === null ? "N/A" : `${integrity.toFixed(2)}%`}</Cell>
-                      <Cell className="text-right">{verification ? verification.invalid > 0 ? <Badge tone="danger">{verification.invalid}</Badge> : "0" : "N/A"}</Cell>
+                      <Cell className="text-right font-mono text-ink-dim">{verification ? formatNumber(checked) : unavailableValue}</Cell>
+                      <Cell className={cn("text-right font-mono font-semibold", integrity !== null && (verification?.invalid ?? 0) > 0 ? "text-danger" : "text-ink-dim")}>{integrity === null ? unavailableValue : `${integrity.toFixed(2)}%`}</Cell>
+                      <Cell className="text-right">{verification ? verification.invalid > 0 ? <Badge tone="danger">{verification.invalid}</Badge> : "0" : unavailableValue}</Cell>
                       <Cell className="text-right font-mono text-[9px] text-ink-faint">{item.updatedAt}</Cell>
                     </tr>
                   );
