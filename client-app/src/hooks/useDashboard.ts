@@ -1,8 +1,12 @@
+import { useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { dashboardMockEnabled, dashboardService } from "@/services/dashboard";
 import { useAuth } from "@/hooks/useAuth";
 import type { TrendRange, VerificationRangeInput } from "@/types/dashboard";
+
+const activeVerificationPollMs = 3_000;
+const idleVerificationPollMs = 5_000;
 
 export const dashboardKeys = {
   all: ["dashboard"] as const,
@@ -10,6 +14,7 @@ export const dashboardKeys = {
   tables: ["dashboard", "tables"] as const,
   inventory: ["dashboard", "inventory"] as const,
   latestScan: ["dashboard", "latest-scan"] as const,
+  verificationRun: ["dashboard", "verification-run"] as const,
   insights: ["dashboard", "insights"] as const,
   activity: ["dashboard", "recent-activity"] as const,
   issues: ["dashboard", "issues"] as const,
@@ -18,6 +23,7 @@ export const dashboardKeys = {
 
 export function useDashboardData() {
   const { session } = useAuth();
+  const queryClient = useQueryClient();
   const hasSession = Boolean(session?.token);
 
   const overview = useQuery({
@@ -29,6 +35,15 @@ export function useDashboardData() {
   const tables = useQuery({ queryKey: dashboardKeys.tables, queryFn: () => dashboardService.getTables(), enabled: dashboardMockEnabled && hasSession });
   const inventory = useQuery({ queryKey: dashboardKeys.inventory, queryFn: () => dashboardService.getInventory(session?.token), enabled: !dashboardMockEnabled && hasSession });
   const latestScan = useQuery({ queryKey: dashboardKeys.latestScan, queryFn: () => dashboardService.getLatestScan(), enabled: dashboardMockEnabled && hasSession });
+  const verificationRun = useQuery({
+    queryKey: dashboardKeys.verificationRun,
+    queryFn: () => dashboardService.getLatestVerificationRun(session?.token),
+    enabled: hasSession,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === "QUEUED" || status === "RUNNING" ? activeVerificationPollMs : idleVerificationPollMs;
+    },
+  });
   const insights = useQuery({ queryKey: dashboardKeys.insights, queryFn: () => dashboardService.getTableInsights(), enabled: dashboardMockEnabled && hasSession });
   const activity = useQuery({
     queryKey: dashboardKeys.activity,
@@ -37,14 +52,34 @@ export function useDashboardData() {
   });
   const issues = useQuery({ queryKey: dashboardKeys.issues, queryFn: () => dashboardService.getIssues(), enabled: dashboardMockEnabled && hasSession });
 
+  const observedRunRef = useRef<string | null>(null);
+  useEffect(() => {
+    const run = verificationRun.data;
+    if (!run) return;
+
+    const runSignature = `${run.id}:${run.status}:${run.updatedAt}`;
+    const previousSignature = observedRunRef.current;
+    observedRunRef.current = runSignature;
+
+    if (!previousSignature || previousSignature === runSignature) return;
+    if (run.status !== "COMPLETED" && run.status !== "FAILED") return;
+
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.overview }),
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.inventory }),
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.activity }),
+    ]);
+  }, [queryClient, verificationRun.data]);
+
   const queries = dashboardMockEnabled
     ? [overview, tables, latestScan, insights, activity, issues]
-    : [overview, activity, inventory];
+    : [overview, activity, inventory, verificationRun];
   return {
     overview,
     tables,
     inventory,
     latestScan,
+    verificationRun,
     insights,
     activity,
     issues,

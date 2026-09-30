@@ -7,7 +7,7 @@ import { RecentAuditActivity } from "@/components/dashboard/RecentAuditActivity"
 import { TableInsights } from "@/components/dashboard/TableInsights";
 import { TableInventory } from "@/components/dashboard/TableInventory";
 import { TableWatchlist } from "@/components/dashboard/TableWatchlist";
-import { VerificationRangePanel } from "@/components/dashboard/VerificationRangePanel";
+import { VerificationRunPanel } from "@/components/dashboard/VerificationRunPanel";
 import { VerificationSnapshot } from "@/components/dashboard/VerificationSnapshot";
 import { ErrorState } from "@/components/ui/panel-state";
 import { useDashboardData, useDashboardRefresh } from "@/hooks/useDashboard";
@@ -19,10 +19,10 @@ export function MonitorPage() {
 
   if (dashboard.isInitialLoading) return <DashboardSkeleton />;
 
-  const { overview, tables, inventory, latestScan, insights, activity, issues } = dashboard;
+  const { overview, tables, inventory, latestScan, insights, activity, issues, verificationRun } = dashboard;
   const hasMissingData = !overview.data || !activity.data || (dashboardMockEnabled
     ? (!tables.data || !latestScan.data || !insights.data || !issues.data)
-    : !inventory.data);
+    : !inventory.data || verificationRun.data === undefined);
 
   if (dashboard.isError || hasMissingData) {
     return <ErrorState onRetry={() => void refresh()} />;
@@ -31,7 +31,7 @@ export function MonitorPage() {
   return (
     <main className="space-y-3 px-3 pb-8 pt-3 lg:px-4">
       <OverviewStats data={overview.data} />
-      {!dashboardMockEnabled && <VerificationRangePanel />}
+      {!dashboardMockEnabled && <VerificationRunPanel data={verificationRun.data ?? null} />}
       {dashboardMockEnabled ? (
         <>
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">

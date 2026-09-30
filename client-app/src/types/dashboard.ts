@@ -76,6 +76,31 @@ export interface VerificationRangeResult {
   summary: VerificationRangeSummary;
 }
 
+export type VerificationRunStatus = "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED";
+
+export interface VerificationRun {
+  id: string;
+  clientId: string;
+  from: string;
+  to: string;
+  status: VerificationRunStatus;
+  batchSize: number;
+  totalItems: number;
+  processedItems: number;
+  progressPercent: number;
+  totalValid: number;
+  totalInvalid: number;
+  totalPending: number;
+  alreadyVerified: number;
+  verifiedNow: number;
+  errorMessage?: string;
+  requestedBy?: string;
+  startedAt?: string;
+  completedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface TrendPoint {
   label: string;
   valid: number;

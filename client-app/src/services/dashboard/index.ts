@@ -22,6 +22,9 @@ export const dashboardService: DashboardService = {
   verifyRange: (token, range) => dashboardMockEnabled
     ? mockDashboardService.verifyRange(token, range)
     : apiDashboardService.verifyRange(token, range),
+  getLatestVerificationRun: (token) => dashboardMockEnabled
+    ? mockDashboardService.getLatestVerificationRun(token)
+    : apiDashboardService.getLatestVerificationRun(token),
   getLatestScan: () => mockDashboardService.getLatestScan(),
   getTableInsights: () => mockDashboardService.getTableInsights(),
   getIssues: () => mockDashboardService.getIssues(),

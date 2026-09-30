@@ -10,6 +10,8 @@ import type {
   VerificationRangeEstimate,
   VerificationRangeInput,
   VerificationRangeResult,
+  VerificationRun,
+  VerificationRunStatus,
 } from "@/types/dashboard";
 
 interface DashboardStatsData {
@@ -83,6 +85,33 @@ interface BackendVerifyRangeResponse {
     already_verified?: number;
     verified_now?: number;
   };
+}
+
+interface BackendVerificationRun {
+  id?: string;
+  client_id?: string;
+  from?: string;
+  to?: string;
+  status?: string;
+  batch_size?: number;
+  total_items?: number;
+  processed_items?: number;
+  progress_percent?: number;
+  total_valid?: number;
+  total_invalid?: number;
+  total_pending?: number;
+  already_verified?: number;
+  verified_now?: number;
+  error_message?: string;
+  requested_by?: string;
+  started_at?: string;
+  completed_at?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+interface BackendVerificationRunResponse {
+  data?: BackendVerificationRun | null;
 }
 
 export class VerifyRangeLimitError extends Error {
@@ -184,6 +213,45 @@ function normalizeStatus(value: unknown): AuditStatus {
   }
 }
 
+function normalizeVerificationRunStatus(value: unknown): VerificationRunStatus {
+  switch (String(value ?? "").trim().toUpperCase()) {
+    case "QUEUED":
+      return "QUEUED";
+    case "RUNNING":
+      return "RUNNING";
+    case "FAILED":
+      return "FAILED";
+    case "COMPLETED":
+    default:
+      return "COMPLETED";
+  }
+}
+
+function mapVerificationRun(value: BackendVerificationRun): VerificationRun {
+  return {
+    id: value.id || "",
+    clientId: value.client_id || "",
+    from: value.from || "",
+    to: value.to || "",
+    status: normalizeVerificationRunStatus(value.status),
+    batchSize: asNumber(value.batch_size),
+    totalItems: asNumber(value.total_items),
+    processedItems: asNumber(value.processed_items),
+    progressPercent: asNumber(value.progress_percent),
+    totalValid: asNumber(value.total_valid),
+    totalInvalid: asNumber(value.total_invalid),
+    totalPending: asNumber(value.total_pending),
+    alreadyVerified: asNumber(value.already_verified),
+    verifiedNow: asNumber(value.verified_now),
+    errorMessage: value.error_message,
+    requestedBy: value.requested_by,
+    startedAt: value.started_at,
+    completedAt: value.completed_at,
+    createdAt: value.created_at || "",
+    updatedAt: value.updated_at || "",
+  };
+}
+
 export class ApiDashboardService {
   async getOverview(
     token?: string,
@@ -260,6 +328,13 @@ export class ApiDashboardService {
         updatedAt: formatActivityTime(row.last_updated_at),
       }))
       .filter((item) => item.table !== "Unknown table");
+  }
+
+  async getLatestVerificationRun(token?: string): Promise<VerificationRun | null> {
+    if (!token) throw new Error("Session client tidak tersedia.");
+
+    const response = await apiClient.get<BackendVerificationRunResponse>("/dashboard/verification-runs/latest", token);
+    return response.data ? mapVerificationRun(response.data) : null;
   }
 
   async estimateVerifyRange(token: string | undefined, range: VerificationRangeInput): Promise<VerificationRangeEstimate> {

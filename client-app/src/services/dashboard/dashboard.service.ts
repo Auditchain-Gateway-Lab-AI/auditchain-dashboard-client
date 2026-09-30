@@ -10,6 +10,7 @@ import type {
   VerificationRangeEstimate,
   VerificationRangeInput,
   VerificationRangeResult,
+  VerificationRun,
   WatchlistItem,
 } from "@/types/dashboard";
 import type { ClientWorkspace } from "@/types/auth";
@@ -21,6 +22,7 @@ export interface DashboardService {
   getInventory(token?: string): Promise<TableInventoryItem[]>;
   estimateVerifyRange(token: string | undefined, range: VerificationRangeInput): Promise<VerificationRangeEstimate>;
   verifyRange(token: string | undefined, range: VerificationRangeInput): Promise<VerificationRangeResult>;
+  getLatestVerificationRun(token?: string): Promise<VerificationRun | null>;
   getLatestScan(): Promise<LatestAuditScan>;
   getTableInsights(): Promise<TableInsightsData>;
   getRecentActivity(token?: string, limit?: number): Promise<AuditActivity[]>;
