@@ -1,5 +1,5 @@
 import { ChevronRight, ShieldCheck, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -91,7 +91,7 @@ function IssueDialog({ issue, onClose }: { issue: AuditIssue; onClose: () => voi
   );
 }
 
-function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
+function DetailRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-4 bg-panel px-5 py-3">
       <span className="text-[9px] uppercase tracking-[0.1em] text-ink-faint">{label}</span>

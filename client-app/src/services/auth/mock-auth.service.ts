@@ -1,4 +1,4 @@
-import { MOCK_AUTH } from "@/mocks/auth.mock";
+import { MOCK_AUTH_ACCOUNTS } from "@/mocks/auth.mock";
 import type { AuthService } from "@/services/auth/auth.service";
 import type { AuthSession, LoginCredentials } from "@/types/auth";
 
@@ -8,11 +8,15 @@ const wait = (duration = 300) => new Promise((resolve) => window.setTimeout(reso
 export class MockAuthService implements AuthService {
   async login(credentials: LoginCredentials): Promise<AuthSession> {
     await wait();
-    if (credentials.username !== MOCK_AUTH.username || credentials.password !== MOCK_AUTH.password) {
+    const account = MOCK_AUTH_ACCOUNTS.find(
+      (candidate) => candidate.username === credentials.username && candidate.password === credentials.password,
+    );
+
+    if (!account) {
       throw new Error("Username atau password tidak sesuai.");
     }
 
-    const session = structuredClone(MOCK_AUTH.session);
+    const session = structuredClone(account.session);
     window.localStorage.setItem(SESSION_KEY, JSON.stringify(session));
     return session;
   }

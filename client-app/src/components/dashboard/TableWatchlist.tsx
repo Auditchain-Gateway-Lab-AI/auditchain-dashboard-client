@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import type { ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/panel-state";
 import { cn, formatNumber } from "@/lib/utils";
@@ -62,6 +63,6 @@ export function TableWatchlist({ data }: { data: WatchlistItem[] }) {
   );
 }
 
-function TableHead({ className, children }: { className?: string; children: React.ReactNode }) {
+function TableHead({ className, children }: { className?: string; children: ReactNode }) {
   return <th className={cn("px-3 py-2 text-right font-semibold", className)}>{children}</th>;
 }

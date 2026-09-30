@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import type { ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/panel-state";
 import { cn } from "@/lib/utils";
@@ -8,7 +9,16 @@ const actionClass: Record<AuditAction, string> = {
   INSERT: "text-success",
   UPDATE: "text-info",
   DELETE: "text-danger",
+  OTHER: "text-ink-dim",
 };
+
+const statusTone = {
+  VALID: "success",
+  TAMPERED: "danger",
+  PENDING: "warning",
+  UNAVAILABLE: "warning",
+  NOT_CHECKED: "neutral",
+} as const;
 
 export function RecentAuditActivity({ data }: { data: AuditActivity[] }) {
   return (
@@ -36,7 +46,7 @@ export function RecentAuditActivity({ data }: { data: AuditActivity[] }) {
                     <Cell className={cn("font-mono text-[9px] font-semibold", actionClass[event.action])}>{event.action}</Cell>
                     <Cell className="font-mono text-ink-dim">{event.record}</Cell>
                     <Cell className="font-mono text-ink-faint">{event.actor}</Cell>
-                    <Cell className="text-right"><Badge tone={event.status === "VALID" ? "success" : "danger"}>{event.status}</Badge></Cell>
+                    <Cell className="text-right"><Badge tone={statusTone[event.status]}>{event.status}</Badge></Cell>
                   </tr>
                 ))}
               </tbody>
@@ -48,10 +58,10 @@ export function RecentAuditActivity({ data }: { data: AuditActivity[] }) {
   );
 }
 
-function Head({ className, children }: { className?: string; children: React.ReactNode }) {
+function Head({ className, children }: { className?: string; children: ReactNode }) {
   return <th className={cn("px-3 py-2 text-left font-semibold", className)}>{children}</th>;
 }
 
-function Cell({ className, children }: { className?: string; children: React.ReactNode }) {
+function Cell({ className, children }: { className?: string; children: ReactNode }) {
   return <td className={cn("px-3 py-[7px]", className)}>{children}</td>;
 }

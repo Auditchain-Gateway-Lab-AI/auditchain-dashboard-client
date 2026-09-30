@@ -1,5 +1,5 @@
 import { LifeBuoy } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -97,6 +97,6 @@ export function ActiveIncidents({ data, onPrepare }: { data: RecoveryIncident[];
   );
 }
 
-function Head({ className, children }: { className?: string; children: React.ReactNode }) {
+function Head({ className, children }: { className?: string; children: ReactNode }) {
   return <th className={cn("px-3.5 py-2.5 font-semibold", className)}>{children}</th>;
 }
