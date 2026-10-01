@@ -52,7 +52,7 @@ export function LoginPage() {
         <section className="hidden md:block">
           <div className="flex items-center gap-3">
             <div className="flex size-14 items-center justify-center rounded-2xl border border-line-strong bg-panel/70 p-2.5 shadow-2xl">
-              <img src="/logo-ag-new.png" alt="AuditChain" className="size-full object-contain" />
+              <img src="/auditchain-logo.png" alt="AuditChain" className="size-full object-contain" />
             </div>
             <div>
               <div className="text-2xl font-semibold tracking-tight text-ink">Audit<span className="text-brand-bright">Chain</span></div>
@@ -74,7 +74,7 @@ export function LoginPage() {
 
         <section className="rounded-xl border border-line-strong bg-panel/95 p-6 shadow-2xl backdrop-blur md:p-8">
           <div className="mb-7 flex items-center gap-3 md:hidden">
-            <img src="/logo-ag-new.png" alt="AuditChain" className="size-10 object-contain" />
+            <img src="/auditchain-logo.png" alt="AuditChain" className="size-10 object-contain" />
             <div className="text-lg font-semibold text-ink">Audit<span className="text-brand-bright">Chain</span></div>
           </div>
           <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-brand-bright">Client Portal</div>

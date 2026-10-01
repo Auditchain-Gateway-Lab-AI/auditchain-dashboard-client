@@ -14,6 +14,7 @@ export function ClientLayout() {
     queryFn: () => dashboardService.getOverview(session?.token, workspace),
     enabled: Boolean(session?.token),
     refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
   });
   const refresh = useClientRefresh();
   const fetching = useIsFetching({ queryKey: ["dashboard"] }) + useIsFetching({ queryKey: ["recovery"] });

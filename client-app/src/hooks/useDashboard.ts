@@ -7,6 +7,7 @@ import type { TrendRange, VerificationRangeInput } from "@/types/dashboard";
 
 const activeVerificationPollMs = 3_000;
 const idleVerificationPollMs = 5_000;
+const liveDashboardRefreshMs = 60_000;
 
 export const dashboardKeys = {
   all: ["dashboard"] as const,
@@ -30,10 +31,17 @@ export function useDashboardData() {
     queryKey: dashboardKeys.overview,
     queryFn: () => dashboardService.getOverview(session?.token, session?.user.workspace),
     enabled: hasSession,
-    refetchInterval: 60_000,
+    refetchInterval: liveDashboardRefreshMs,
+    refetchOnWindowFocus: true,
   });
   const tables = useQuery({ queryKey: dashboardKeys.tables, queryFn: () => dashboardService.getTables(), enabled: dashboardMockEnabled && hasSession });
-  const inventory = useQuery({ queryKey: dashboardKeys.inventory, queryFn: () => dashboardService.getInventory(session?.token), enabled: !dashboardMockEnabled && hasSession });
+  const inventory = useQuery({
+    queryKey: dashboardKeys.inventory,
+    queryFn: () => dashboardService.getInventory(session?.token),
+    enabled: !dashboardMockEnabled && hasSession,
+    refetchInterval: liveDashboardRefreshMs,
+    refetchOnWindowFocus: true,
+  });
   const latestScan = useQuery({ queryKey: dashboardKeys.latestScan, queryFn: () => dashboardService.getLatestScan(), enabled: dashboardMockEnabled && hasSession });
   const verificationRun = useQuery({
     queryKey: dashboardKeys.verificationRun,
@@ -49,6 +57,8 @@ export function useDashboardData() {
     queryKey: dashboardKeys.activity,
     queryFn: () => dashboardService.getRecentActivity(session?.token, 10),
     enabled: hasSession,
+    refetchInterval: dashboardMockEnabled ? false : liveDashboardRefreshMs,
+    refetchOnWindowFocus: true,
   });
   const issues = useQuery({ queryKey: dashboardKeys.issues, queryFn: () => dashboardService.getIssues(), enabled: dashboardMockEnabled && hasSession });
 
@@ -96,7 +106,8 @@ export function useIntegrityTrend(range: TrendRange) {
     queryKey: dashboardKeys.trend(range),
     queryFn: () => dashboardService.getIntegrityTrend(range, session?.token),
     enabled: dashboardMockEnabled || Boolean(session?.token),
-    refetchInterval: dashboardMockEnabled ? false : 60_000,
+    refetchInterval: dashboardMockEnabled ? false : liveDashboardRefreshMs,
+    refetchOnWindowFocus: true,
   });
 }
 
