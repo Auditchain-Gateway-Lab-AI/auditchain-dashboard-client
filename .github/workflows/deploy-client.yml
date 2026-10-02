@@ -133,6 +133,7 @@ jobs:
       url: http://100.125.142.44:3002
     permissions:
       contents: read
+      packages: read
 
     steps:
       - name: Check out deployment configuration
@@ -143,11 +144,11 @@ jobs:
           TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
           BESU_SSH_PRIVATE_KEY: ${{ secrets.BESU_SSH_PRIVATE_KEY }}
           BESU_SSH_HOST_FINGERPRINT: ${{ secrets.BESU_SSH_HOST_FINGERPRINT }}
-          BESU_GHCR_READ_TOKEN: ${{ secrets.BESU_GHCR_READ_TOKEN }}
-          BESU_GHCR_USERNAME: ${{ vars.BESU_GHCR_USERNAME }}
+          GHCR_READ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USERNAME: ${{ github.actor }}
         run: |
           set -euo pipefail
-          for name in TS_AUTHKEY BESU_SSH_PRIVATE_KEY BESU_SSH_HOST_FINGERPRINT BESU_GHCR_READ_TOKEN BESU_GHCR_USERNAME; do
+          for name in TS_AUTHKEY BESU_SSH_PRIVATE_KEY BESU_SSH_HOST_FINGERPRINT GHCR_READ_TOKEN GHCR_USERNAME; do
             if [[ -z "${!name}" ]]; then
               echo "Missing required development environment secret or variable: $name" >&2
               exit 1
@@ -187,8 +188,8 @@ jobs:
         uses: appleboy/ssh-action@v1
         env:
           BUNDLE_NAME: client-deploy-${{ github.run_id }}-${{ github.run_attempt }}.tar.gz
-          BESU_GHCR_READ_TOKEN: ${{ secrets.BESU_GHCR_READ_TOKEN }}
-          BESU_GHCR_USERNAME: ${{ vars.BESU_GHCR_USERNAME }}
+          GHCR_READ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USERNAME: ${{ github.actor }}
           CLIENT_IMAGE_NAME: ${{ needs.validate.outputs.image_name }}
           CLIENT_IMAGE_SHA: ${{ needs.validate.outputs.image_sha }}
           CLIENT_IMAGE_DIGEST: ${{ needs.publish.outputs.image_digest }}
@@ -201,7 +202,7 @@ jobs:
           key: ${{ secrets.BESU_SSH_PRIVATE_KEY }}
           passphrase: ${{ secrets.BESU_SSH_KEY_PASSPHRASE }}
           fingerprint: ${{ secrets.BESU_SSH_HOST_FINGERPRINT }}
-          envs: BUNDLE_NAME,BESU_GHCR_READ_TOKEN,BESU_GHCR_USERNAME,CLIENT_IMAGE_NAME,CLIENT_IMAGE_SHA,CLIENT_IMAGE_DIGEST,CLIENT_IMAGE_REF,GITHUB_RUN_ID
+          envs: BUNDLE_NAME,GHCR_READ_TOKEN,GHCR_USERNAME,CLIENT_IMAGE_NAME,CLIENT_IMAGE_SHA,CLIENT_IMAGE_DIGEST,CLIENT_IMAGE_REF,GITHUB_RUN_ID
           command_timeout: 15m
           script: |
             set -eu
@@ -224,10 +225,8 @@ jobs:
             export DASHBOARD_PORT=3002
             export AUDITCHAIN_API_UPSTREAM=http://host.docker.internal:8080
             export CLIENT_IMAGE_NAME CLIENT_IMAGE_SHA CLIENT_IMAGE_DIGEST CLIENT_IMAGE_REF
-            export GHCR_USERNAME="$BESU_GHCR_USERNAME"
-            export GHCR_READ_TOKEN="$BESU_GHCR_READ_TOKEN"
+            export GHCR_USERNAME GHCR_READ_TOKEN
             export GITHUB_RUN_ID
-            unset BESU_GHCR_READ_TOKEN
             bash "$package_dir/deploy-to-besu.sh"
 
       - name: Record deployed release

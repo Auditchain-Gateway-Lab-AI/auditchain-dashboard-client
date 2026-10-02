@@ -52,9 +52,7 @@ Create a GitHub Environment named `development`, then add these environment secr
 | `BESU_SSH_PRIVATE_KEY` | Secret | SSH private key authorized for the `besu` account. |
 | `BESU_SSH_KEY_PASSPHRASE` | Secret, optional | Passphrase if the SSH private key is encrypted. |
 | `BESU_SSH_HOST_FINGERPRINT` | Secret | Pinned SSH server key fingerprint in `SHA256:...` format. |
-| `BESU_GHCR_READ_TOKEN` | Secret | GitHub personal access token (classic) with `read:packages` for pulling the private image; authorize it for organization SSO if required. |
-| `BESU_GHCR_USERNAME` | Variable | GitHub username that owns the read token. |
 | `BESU_SSH_USERNAME` | Variable | Optional; defaults to `besu`. |
 | `BESU_SSH_PORT` | Variable | Optional; defaults to `22`. |
 
-The publishing job uses its short-lived `GITHUB_TOKEN` with `packages: write`. The DEV server needs Docker Engine with the Compose v2 plugin and access to `100.125.142.44:8080` from its Docker bridge via `host.docker.internal`. The release workflow does not copy application credentials to GitHub or replace the Gateway's environment file.
+The publishing job uses its short-lived `GITHUB_TOKEN` with `packages: write`, and the deploy job uses its own short-lived token with `packages: read`; no GHCR PAT or username variable is needed. The image is linked to this repository using the OCI source label so the workflow can access it. If your organization disables inherited package access, grant this repository read access under the package's **Manage Actions access** settings. The DEV server needs Docker Engine with the Compose v2 plugin and access to `100.125.142.44:8080` from its Docker bridge via `host.docker.internal`. The release workflow does not copy application credentials to GitHub or replace the Gateway's environment file.
