@@ -15,6 +15,26 @@ readonly image_digest="${CLIENT_IMAGE_DIGEST:?CLIENT_IMAGE_DIGEST is required}"
 readonly image_ref="${CLIENT_IMAGE_REF:?CLIENT_IMAGE_REF is required}"
 readonly ghcr_username="${GHCR_USERNAME:?GHCR_USERNAME is required}"
 
+compose_cmd=(docker compose)
+if ! "${compose_cmd[@]}" version >/dev/null 2>&1; then
+  if ! command -v docker-compose >/dev/null 2>&1; then
+    printf '%s\n' "Docker Compose v2 is required (docker compose plugin or docker-compose standalone)." >&2
+    exit 1
+  fi
+
+  if ! compose_version="$(docker-compose version 2>&1)"; then
+    printf 'Could not run docker-compose: %s\n' "$compose_version" >&2
+    exit 1
+  fi
+  if [[ ! "$compose_version" =~ (^|[[:space:]])v?2\.[0-9]+ ]]; then
+    printf 'Docker Compose v2 is required; docker-compose reported: %s\n' "$compose_version" >&2
+    exit 1
+  fi
+
+  compose_cmd=(docker-compose)
+fi
+printf 'Using Docker Compose command: %s\n' "${compose_cmd[*]}"
+
 if [[ "$deploy_dir" != "$expected_deploy_dir" ]]; then
   printf 'Refusing unexpected deployment directory: %s\n' "$deploy_dir" >&2
   exit 1
@@ -80,22 +100,17 @@ restore_previous_release() {
   if [[ "$have_previous_env" == true && "$have_previous_compose" == true ]]; then
     cp -- "$rollback_env_file" "$env_file"
     cp -- "$rollback_compose_file" "$compose_file"
-    if ! docker compose "${compose_options[@]}" --env-file "$env_file" up --detach --wait --wait-timeout 90 dashboard; then
+    if ! "${compose_cmd[@]}" "${compose_options[@]}" --env-file "$env_file" up --detach --wait --wait-timeout 90 dashboard; then
       printf '%s\n' "Automatic restoration failed. The previous image and configuration remain in the deployment directory." >&2
     fi
   else
-    docker compose "${compose_options[@]}" --env-file "$env_file" down --remove-orphans || true
+    "${compose_cmd[@]}" "${compose_options[@]}" --env-file "$env_file" down --remove-orphans || true
     rm -f -- "$env_file"
     rm -f -- "$compose_file"
   fi
 }
 
 trap cleanup EXIT
-
-if ! docker compose version >/dev/null 2>&1; then
-  printf '%s\n' "Docker Compose v2 is required on the DEV server." >&2
-  exit 1
-fi
 
 gateway_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 10 \
   "http://100.125.142.44:8080/api/auth/me" || true)"
@@ -120,7 +135,7 @@ printf 'CLIENT_IMAGE=%s\nDASHBOARD_BIND_ADDRESS=%s\nDASHBOARD_PORT=%s\nAUDITCHAI
 
 readonly staged_compose_options=(--project-name "$project_name" --project-directory "$deploy_dir" --file "$new_compose_file" --env-file "$new_env_file")
 
-if ! docker compose "${staged_compose_options[@]}" config --quiet; then
+if ! "${compose_cmd[@]}" "${staged_compose_options[@]}" config --quiet; then
   printf '%s\n' "The dashboard Compose configuration is invalid." >&2
   exit 1
 fi
@@ -128,11 +143,11 @@ fi
 printf '%s' "$GHCR_READ_TOKEN" | docker login ghcr.io --username "$ghcr_username" --password-stdin
 unset GHCR_READ_TOKEN
 
-docker compose "${staged_compose_options[@]}" pull dashboard
+"${compose_cmd[@]}" "${staged_compose_options[@]}" pull dashboard
 mv -f -- "$new_compose_file" "$compose_file"
 mv -f -- "$new_env_file" "$env_file"
 
-if ! docker compose "${compose_options[@]}" --env-file "$env_file" up --detach --wait --wait-timeout 90 --force-recreate dashboard; then
+if ! "${compose_cmd[@]}" "${compose_options[@]}" --env-file "$env_file" up --detach --wait --wait-timeout 90 --force-recreate dashboard; then
   restore_previous_release
   exit 1
 fi
