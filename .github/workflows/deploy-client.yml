@@ -119,13 +119,13 @@ jobs:
       - name: Check deployment credentials
         env:
           TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
-          BESU_SSH_PRIVATE_KEY: ${{ secrets.BESU_SSH_PRIVATE_KEY }}
+          BESU_SSH_PASSWORD: ${{ secrets.BESU_SSH_PASSWORD }}
           BESU_SSH_HOST_FINGERPRINT: ${{ secrets.BESU_SSH_HOST_FINGERPRINT }}
           GHCR_READ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_USERNAME: ${{ github.actor }}
         run: |
           set -euo pipefail
-          for name in TS_AUTHKEY BESU_SSH_PRIVATE_KEY BESU_SSH_HOST_FINGERPRINT GHCR_READ_TOKEN GHCR_USERNAME; do
+          for name in TS_AUTHKEY BESU_SSH_PASSWORD BESU_SSH_HOST_FINGERPRINT GHCR_READ_TOKEN GHCR_USERNAME; do
             if [[ -z "${!name}" ]]; then
               echo "Missing required development environment secret or variable: $name" >&2
               exit 1
@@ -153,8 +153,7 @@ jobs:
           host: 100.125.142.44
           username: ${{ vars.BESU_SSH_USERNAME || 'besu' }}
           port: ${{ vars.BESU_SSH_PORT || '22' }}
-          key: ${{ secrets.BESU_SSH_PRIVATE_KEY }}
-          passphrase: ${{ secrets.BESU_SSH_KEY_PASSPHRASE }}
+          password: ${{ secrets.BESU_SSH_PASSWORD }}
           fingerprint: ${{ secrets.BESU_SSH_HOST_FINGERPRINT }}
           source: client-deploy-${{ github.run_id }}-${{ github.run_attempt }}.tar.gz
           target: /tmp/
@@ -176,8 +175,7 @@ jobs:
           host: 100.125.142.44
           username: ${{ vars.BESU_SSH_USERNAME || 'besu' }}
           port: ${{ vars.BESU_SSH_PORT || '22' }}
-          key: ${{ secrets.BESU_SSH_PRIVATE_KEY }}
-          passphrase: ${{ secrets.BESU_SSH_KEY_PASSPHRASE }}
+          password: ${{ secrets.BESU_SSH_PASSWORD }}
           fingerprint: ${{ secrets.BESU_SSH_HOST_FINGERPRINT }}
           envs: BUNDLE_NAME,GHCR_READ_TOKEN,GHCR_USERNAME,CLIENT_IMAGE_NAME,CLIENT_IMAGE_SHA,CLIENT_IMAGE_DIGEST,CLIENT_IMAGE_REF,GITHUB_RUN_ID
           command_timeout: 15m
