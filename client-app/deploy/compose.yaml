@@ -1,0 +1,19 @@
+services:
+  dashboard:
+    image: ${CLIENT_IMAGE:?CLIENT_IMAGE must name the published GHCR image digest}
+    container_name: auditchain-client-portal
+    restart: unless-stopped
+    ports:
+      - "${DASHBOARD_BIND_ADDRESS:-100.125.142.44}:${DASHBOARD_PORT:-3002}:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      AUDITCHAIN_API_UPSTREAM: ${AUDITCHAIN_API_UPSTREAM:-http://host.docker.internal:8080}
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m,mode=1777
+      - /etc/nginx/conf.d:rw,noexec,nosuid,nodev,size=1m,uid=101,gid=101,mode=755
