@@ -1,0 +1,65 @@
+name: AuditChain Client CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "client-app/**"
+      - ".github/workflows/**"
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: client-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-client:
+    name: Typecheck and build client
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: client-app
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.17.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: client-app/pnpm-lock.yaml
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck and build
+        run: pnpm run build
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build production image
+        uses: docker/build-push-action@v7
+        with:
+          context: client-app
+          file: client-app/Dockerfile
+          push: false
+          tags: auditchain-client-ci:${{ github.sha }}
+          build-args: |
+            VITE_API_BASE_URL=/api
+            VITE_GATEWAY_PORTAL_URL=http://100.125.142.44:3001
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
