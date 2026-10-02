@@ -49,8 +49,7 @@ Create a GitHub Environment named `development`, then add these environment secr
 | Name | Type | Purpose |
 | --- | --- | --- |
 | `TS_AUTHKEY` | Secret | Reusable, ephemeral, preauthorized Tailscale auth key for the GitHub runner. |
-| `BESU_SSH_PRIVATE_KEY` | Secret | SSH private key authorized for the `besu` account. |
-| `BESU_SSH_KEY_PASSPHRASE` | Secret, optional | Passphrase if the SSH private key is encrypted. |
+| `BESU_SSH_PASSWORD` | Secret | SSH login password for the `besu` account. |
 | `BESU_SSH_HOST_FINGERPRINT` | Secret | Pinned SSH server key fingerprint in `SHA256:...` format. |
 | `BESU_SSH_USERNAME` | Variable | Optional; defaults to `besu`. |
 | `BESU_SSH_PORT` | Variable | Optional; defaults to `22`. |
