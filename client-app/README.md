@@ -40,11 +40,11 @@ Open `http://localhost:8081`. The client API base URL is embedded at build time;
 
 ## Deploy to the Besu development server
 
-The manual GitHub Actions workflow `../.github/workflows/deploy-client.yml` publishes a commit-tagged GHCR image and deploys the exact published image digest over Tailscale SSH. Merge the changes into `main`, then open **Actions → Deploy AuditChain Client to Besu DEV → Run workflow** on `main`. Confirm the Development target and enter a short reason. Leave `image_sha` blank for the current `main` commit, or enter a full commit SHA from `main` to rebuild and deploy that version.
+The GitHub Actions workflow `../.github/workflows/deploy-client.yml` deploys automatically whenever a commit is pushed or merged into `main`. It first runs the client CI checks, then publishes a commit-tagged GHCR image and deploys the exact published image digest over Tailscale SSH. There is no manual **Run workflow** step. The workflow uses the commit that entered `main`; a failed CI check prevents publication and deployment.
 
 The deployment creates the dedicated directory `/home/besu/auditchain/auditchain-dashboard-client` and serves the portal at `http://100.125.142.44:3002`. Docker binds port 3002 to the server's Tailscale address. The **Gateway Admin Portal** link points to the existing dashboard at `http://100.125.142.44:3001`. NGINX forwards same-origin `/api/` requests to the existing Gateway at `http://host.docker.internal:8080`; the deploy script checks that `/api/auth/me` responds with either `200` or the expected unauthenticated `401`, and rolls back if the dashboard health or API proxy check fails. The existing dashboard on port 3001, Gateway service, and Gateway `.env` are not part of this release.
 
-Create a GitHub Environment named `development`, then add these environment secrets and variables before running the workflow:
+Create a GitHub Environment named `development`, then add these environment secrets and variables. For fully automatic deployment, configure the environment without required reviewers or a wait timer:
 
 | Name | Type | Purpose |
 | --- | --- | --- |

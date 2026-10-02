@@ -6,11 +6,7 @@ on:
     paths:
       - "client-app/**"
       - ".github/workflows/**"
-  push:
-    branches: [main]
-    paths:
-      - "client-app/**"
-      - ".github/workflows/**"
+  workflow_call:
 
 permissions:
   contents: read

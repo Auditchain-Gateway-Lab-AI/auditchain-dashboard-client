@@ -1,21 +1,8 @@
 name: Deploy AuditChain Client to Besu DEV
 
 on:
-  workflow_dispatch:
-    inputs:
-      confirm_development:
-        description: I confirm that this run deploys to the Besu DEV server.
-        type: boolean
-        required: true
-        default: false
-      reason:
-        description: Short change or rollback reason for this manual release.
-        type: string
-        required: true
-      image_sha:
-        description: Optional full commit SHA to redeploy; leave empty for this main commit.
-        type: string
-        required: false
+  push:
+    branches: [main]
 
 permissions:
   contents: read
@@ -26,8 +13,8 @@ concurrency:
 
 jobs:
   validate:
-    name: Validate manual DEV release
-    if: ${{ github.ref == 'refs/heads/main' && inputs.confirm_development }}
+    name: Validate automatic DEV release
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -35,35 +22,19 @@ jobs:
       image_name: ${{ steps.release.outputs.image_name }}
 
     steps:
-      - name: Checkout main history
+      - name: Check out pushed commit
         uses: actions/checkout@v7
         with:
-          fetch-depth: 0
+          ref: ${{ github.sha }}
+          fetch-depth: 1
 
-      - name: Validate release selection
+      - name: Validate deployment inputs
         id: release
-        env:
-          REQUESTED_IMAGE_SHA: ${{ inputs.image_sha }}
-          DEPLOY_REASON: ${{ inputs.reason }}
         run: |
           set -euo pipefail
 
-          if [[ -z "${DEPLOY_REASON//[[:space:]]/}" ]]; then
-            echo "A short deployment reason is required." >&2
-            exit 1
-          fi
-
-          git fetch --no-tags origin main
-          selected_sha="${REQUESTED_IMAGE_SHA:-$GITHUB_SHA}"
-          if [[ ! "$selected_sha" =~ ^[0-9a-fA-F]{40}$ ]]; then
-            echo "image_sha must be a full 40-character Git commit SHA." >&2
-            exit 1
-          fi
-          selected_sha="$(git rev-parse --verify "${selected_sha}^{commit}")"
-          if ! git merge-base --is-ancestor "$selected_sha" FETCH_HEAD; then
-            echo "The selected image commit must be part of main history." >&2
-            exit 1
-          fi
+          selected_sha="$GITHUB_SHA"
+          git rev-parse --verify "${selected_sha}^{commit}" >/dev/null
           for required_path in client-app/Dockerfile client-app/package.json client-app/pnpm-lock.yaml; do
             if ! git cat-file -e "$selected_sha:$required_path" 2>/dev/null; then
               echo "The selected commit does not contain the client build input: $required_path" >&2
@@ -74,11 +45,17 @@ jobs:
           image_name="ghcr.io/${GITHUB_REPOSITORY,,}-client"
           echo "image_sha=$selected_sha" >> "$GITHUB_OUTPUT"
           echo "image_name=$image_name" >> "$GITHUB_OUTPUT"
-          echo "Validated DEV deployment of $image_name:$selected_sha."
+          echo "Validated automatic DEV deployment of $image_name:$selected_sha."
+
+  ci:
+    name: Run client CI before deployment
+    uses: ./.github/workflows/client-ci.yml
+    permissions:
+      contents: read
 
   publish:
     name: Build and publish image digest
-    needs: validate
+    needs: [validate, ci]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     outputs:
@@ -125,7 +102,7 @@ jobs:
   deploy:
     name: Deploy to Besu development server
     needs: [validate, publish]
-    if: ${{ github.ref == 'refs/heads/main' && inputs.confirm_development }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     environment:
