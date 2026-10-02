@@ -1,0 +1,251 @@
+name: Deploy AuditChain Client to Besu DEV
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_development:
+        description: I confirm that this run deploys to the Besu DEV server.
+        type: boolean
+        required: true
+        default: false
+      reason:
+        description: Short change or rollback reason for this manual release.
+        type: string
+        required: true
+      image_sha:
+        description: Optional full commit SHA to redeploy; leave empty for this main commit.
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: auditchain-client-development-deploy
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate manual DEV release
+    if: ${{ github.ref == 'refs/heads/main' && inputs.confirm_development }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      image_sha: ${{ steps.release.outputs.image_sha }}
+      image_name: ${{ steps.release.outputs.image_name }}
+
+    steps:
+      - name: Checkout main history
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Validate release selection
+        id: release
+        env:
+          REQUESTED_IMAGE_SHA: ${{ inputs.image_sha }}
+          DEPLOY_REASON: ${{ inputs.reason }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${DEPLOY_REASON//[[:space:]]/}" ]]; then
+            echo "A short deployment reason is required." >&2
+            exit 1
+          fi
+
+          git fetch --no-tags origin main
+          selected_sha="${REQUESTED_IMAGE_SHA:-$GITHUB_SHA}"
+          if [[ ! "$selected_sha" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "image_sha must be a full 40-character Git commit SHA." >&2
+            exit 1
+          fi
+          selected_sha="$(git rev-parse --verify "${selected_sha}^{commit}")"
+          if ! git merge-base --is-ancestor "$selected_sha" FETCH_HEAD; then
+            echo "The selected image commit must be part of main history." >&2
+            exit 1
+          fi
+          for required_path in client-app/Dockerfile client-app/package.json client-app/pnpm-lock.yaml; do
+            if ! git cat-file -e "$selected_sha:$required_path" 2>/dev/null; then
+              echo "The selected commit does not contain the client build input: $required_path" >&2
+              exit 1
+            fi
+          done
+
+          image_name="ghcr.io/${GITHUB_REPOSITORY,,}-client"
+          echo "image_sha=$selected_sha" >> "$GITHUB_OUTPUT"
+          echo "image_name=$image_name" >> "$GITHUB_OUTPUT"
+          echo "Validated DEV deployment of $image_name:$selected_sha."
+
+  publish:
+    name: Build and publish image digest
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      image_digest: ${{ steps.build.outputs.digest }}
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout selected source commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.validate.outputs.image_sha }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish client image
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: client-app
+          file: client-app/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ needs.validate.outputs.image_name }}:${{ needs.validate.outputs.image_sha }}
+          build-args: |
+            VITE_API_BASE_URL=/api
+            VITE_GATEWAY_PORTAL_URL=http://100.125.142.44:3001
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.validate.outputs.image_sha }}
+
+  deploy:
+    name: Deploy to Besu development server
+    needs: [validate, publish]
+    if: ${{ github.ref == 'refs/heads/main' && inputs.confirm_development }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: development
+      url: http://100.125.142.44:3002
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out deployment configuration
+        uses: actions/checkout@v7
+
+      - name: Check deployment credentials
+        env:
+          TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
+          BESU_SSH_PRIVATE_KEY: ${{ secrets.BESU_SSH_PRIVATE_KEY }}
+          BESU_SSH_HOST_FINGERPRINT: ${{ secrets.BESU_SSH_HOST_FINGERPRINT }}
+          BESU_GHCR_READ_TOKEN: ${{ secrets.BESU_GHCR_READ_TOKEN }}
+          BESU_GHCR_USERNAME: ${{ vars.BESU_GHCR_USERNAME }}
+        run: |
+          set -euo pipefail
+          for name in TS_AUTHKEY BESU_SSH_PRIVATE_KEY BESU_SSH_HOST_FINGERPRINT BESU_GHCR_READ_TOKEN BESU_GHCR_USERNAME; do
+            if [[ -z "${!name}" ]]; then
+              echo "Missing required development environment secret or variable: $name" >&2
+              exit 1
+            fi
+          done
+
+      - name: Connect runner to the Tailscale network
+        uses: tailscale/github-action@v4
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+          ping: 100.125.142.44
+
+      - name: Package deployment files
+        env:
+          BUNDLE_NAME: client-deploy-${{ github.run_id }}-${{ github.run_attempt }}.tar.gz
+        run: |
+          set -euo pipefail
+          tar -czf "$BUNDLE_NAME" \
+            -C "$GITHUB_WORKSPACE/client-app/deploy" compose.yaml \
+            -C "$GITHUB_WORKSPACE/client-app/scripts" deploy-to-besu.sh
+
+      - name: Copy release configuration to Besu DEV
+        uses: appleboy/scp-action@v1
+        with:
+          host: 100.125.142.44
+          username: ${{ vars.BESU_SSH_USERNAME || 'besu' }}
+          port: ${{ vars.BESU_SSH_PORT || '22' }}
+          key: ${{ secrets.BESU_SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.BESU_SSH_KEY_PASSPHRASE }}
+          fingerprint: ${{ secrets.BESU_SSH_HOST_FINGERPRINT }}
+          source: client-deploy-${{ github.run_id }}-${{ github.run_attempt }}.tar.gz
+          target: /tmp/
+          timeout: 60s
+          command_timeout: 2m
+
+      - name: Deploy and verify dashboard on Besu DEV
+        uses: appleboy/ssh-action@v1
+        env:
+          BUNDLE_NAME: client-deploy-${{ github.run_id }}-${{ github.run_attempt }}.tar.gz
+          BESU_GHCR_READ_TOKEN: ${{ secrets.BESU_GHCR_READ_TOKEN }}
+          BESU_GHCR_USERNAME: ${{ vars.BESU_GHCR_USERNAME }}
+          CLIENT_IMAGE_NAME: ${{ needs.validate.outputs.image_name }}
+          CLIENT_IMAGE_SHA: ${{ needs.validate.outputs.image_sha }}
+          CLIENT_IMAGE_DIGEST: ${{ needs.publish.outputs.image_digest }}
+          CLIENT_IMAGE_REF: ${{ needs.validate.outputs.image_name }}@${{ needs.publish.outputs.image_digest }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        with:
+          host: 100.125.142.44
+          username: ${{ vars.BESU_SSH_USERNAME || 'besu' }}
+          port: ${{ vars.BESU_SSH_PORT || '22' }}
+          key: ${{ secrets.BESU_SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.BESU_SSH_KEY_PASSPHRASE }}
+          fingerprint: ${{ secrets.BESU_SSH_HOST_FINGERPRINT }}
+          envs: BUNDLE_NAME,BESU_GHCR_READ_TOKEN,BESU_GHCR_USERNAME,CLIENT_IMAGE_NAME,CLIENT_IMAGE_SHA,CLIENT_IMAGE_DIGEST,CLIENT_IMAGE_REF,GITHUB_RUN_ID
+          command_timeout: 15m
+          script: |
+            set -eu
+            case "$GITHUB_RUN_ID" in ''|*[!0-9]*) echo "Invalid workflow run ID." >&2; exit 1 ;; esac
+            case "$BUNDLE_NAME" in "client-deploy-${GITHUB_RUN_ID}-"*.tar.gz) ;; *) echo "Unexpected deployment bundle name." >&2; exit 1 ;; esac
+
+            bundle_path="/tmp/$BUNDLE_NAME"
+            package_dir="$(mktemp -d "/tmp/auditchain-client-${GITHUB_RUN_ID}.XXXXXX")"
+            cleanup() {
+              rm -rf -- "$package_dir"
+              rm -f -- "$bundle_path"
+            }
+            trap cleanup 0
+            tar -xzf "$bundle_path" -C "$package_dir"
+
+            export DEPLOY_PACKAGE_DIR="$package_dir"
+            export DASHBOARD_PROJECT_DIR=/home/besu/auditchain/auditchain-dashboard-client
+            export DASHBOARD_URL=http://100.125.142.44:3002
+            export DASHBOARD_BIND_ADDRESS=100.125.142.44
+            export DASHBOARD_PORT=3002
+            export AUDITCHAIN_API_UPSTREAM=http://host.docker.internal:8080
+            export CLIENT_IMAGE_NAME CLIENT_IMAGE_SHA CLIENT_IMAGE_DIGEST CLIENT_IMAGE_REF
+            export GHCR_USERNAME="$BESU_GHCR_USERNAME"
+            export GHCR_READ_TOKEN="$BESU_GHCR_READ_TOKEN"
+            export GITHUB_RUN_ID
+            unset BESU_GHCR_READ_TOKEN
+            bash "$package_dir/deploy-to-besu.sh"
+
+      - name: Record deployed release
+        env:
+          CLIENT_IMAGE_NAME: ${{ needs.validate.outputs.image_name }}
+          CLIENT_IMAGE_SHA: ${{ needs.validate.outputs.image_sha }}
+          CLIENT_IMAGE_DIGEST: ${{ needs.publish.outputs.image_digest }}
+        run: |
+          {
+            echo "### AuditChain Client DEV deployment"
+            echo
+            echo "- Result: successful; the remote script passed dashboard health and Gateway API connectivity checks."
+            echo "- Image: \`$CLIENT_IMAGE_NAME@$CLIENT_IMAGE_DIGEST\` (source commit \`$CLIENT_IMAGE_SHA\`)"
+            echo "- Dashboard: http://100.125.142.44:3002"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove local deployment bundle
+        if: ${{ always() }}
+        env:
+          BUNDLE_NAME: client-deploy-${{ github.run_id }}-${{ github.run_attempt }}.tar.gz
+        run: rm -f -- "$BUNDLE_NAME"
