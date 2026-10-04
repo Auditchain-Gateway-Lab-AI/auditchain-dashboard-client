@@ -52,6 +52,7 @@ interface BackendAuditLog {
   actor?: string;
   timestamp?: string;
   source_record_id?: string;
+  metadata?: unknown;
   integrity_status?: string;
 }
 
@@ -61,6 +62,10 @@ interface RecentLogsResponse {
     total_items?: number;
   };
 }
+
+const TREND_SAMPLE_LIMIT = 100;
+const TREND_EXACT_LIMIT = 2_000;
+const TREND_PAGE_SIZE = 200;
 
 interface BackendInventoryItem {
   table_name?: string;
@@ -208,7 +213,12 @@ function formatTrendLabel(value: Date, range: TrendRange) {
   return new Intl.DateTimeFormat("en-GB", options).format(value);
 }
 
-function buildIntegrityTrend(rows: BackendAuditLog[], range: TrendRange, totalItems: number): Array<{
+function buildIntegrityTrend(
+  rows: BackendAuditLog[],
+  range: TrendRange,
+  totalItems: number,
+  window = getTrendWindow(range),
+): Array<{
   label: string;
   valid: number;
   tampered: number;
@@ -220,9 +230,13 @@ function buildIntegrityTrend(rows: BackendAuditLog[], range: TrendRange, totalIt
 }> {
   if (rows.length === 0) return [];
 
-  const window = getTrendWindow(range);
   const points = Array.from({ length: window.buckets }, (_, index) => ({
-    label: formatTrendLabel(new Date(window.from.getTime() + index * window.bucketMs), range),
+    label: formatTrendLabel(
+      index === window.buckets - 1
+        ? window.to
+        : new Date(window.from.getTime() + (index + 1) * window.bucketMs),
+      range,
+    ),
     valid: 0,
     tampered: 0,
     insert: 0,
@@ -383,15 +397,82 @@ export class ApiDashboardService {
     if (!token) throw new Error("Session client tidak tersedia.");
 
     const window = getTrendWindow(range);
-    const params = new URLSearchParams({
-      page: "1",
-      page_size: "100",
-      sort_order: "asc",
-      from: window.from.toISOString(),
-      to: window.to.toISOString(),
-    });
-    const response = await apiClient.get<RecentLogsResponse>(`/dashboard/logs?${params.toString()}`, token);
-    return buildIntegrityTrend(response.data ?? [], range, asNumber(response.pagination?.total_items));
+    const bucketResponses = await Promise.all(
+      Array.from({ length: window.buckets }, (_, index) => {
+        const from = new Date(window.from.getTime() + index * window.bucketMs);
+        const to = index === window.buckets - 1
+          ? window.to
+          : new Date(window.from.getTime() + (index + 1) * window.bucketMs);
+        const params = new URLSearchParams({
+          page: "1",
+          page_size: String(TREND_PAGE_SIZE),
+          sort_order: "desc",
+          from: from.toISOString(),
+          to: to.toISOString(),
+        });
+        return apiClient.get<RecentLogsResponse>(`/dashboard/logs?${params.toString()}`, token);
+      }),
+    );
+
+    const totalItems = bucketResponses.reduce(
+      (total, response) => total + asNumber(response.pagination?.total_items),
+      0,
+    );
+    const exactRows = totalItems <= TREND_EXACT_LIMIT
+      ? await Promise.all(bucketResponses.map(async (response, index) => {
+        const bucketTotal = asNumber(response.pagination?.total_items);
+        const pageCount = Math.ceil(bucketTotal / TREND_PAGE_SIZE);
+        if (pageCount <= 1) return response.data ?? [];
+
+        const from = new Date(window.from.getTime() + index * window.bucketMs);
+        const to = index === window.buckets - 1
+          ? window.to
+          : new Date(window.from.getTime() + (index + 1) * window.bucketMs);
+        const pages = await Promise.all(
+          Array.from({ length: pageCount - 1 }, (_, pageIndex) => {
+            const params = new URLSearchParams({
+              page: String(pageIndex + 2),
+              page_size: String(TREND_PAGE_SIZE),
+              sort_order: "desc",
+              from: from.toISOString(),
+              to: to.toISOString(),
+            });
+            return apiClient.get<RecentLogsResponse>(`/dashboard/logs?${params.toString()}`, token);
+          }),
+        );
+        return [...(response.data ?? []), ...pages.flatMap((page) => page.data ?? [])];
+      }))
+      : null;
+
+    const rowsById = new Map<string, BackendAuditLog>();
+    if (exactRows) {
+      for (const rows of exactRows) {
+        for (const row of rows) {
+          const key = row.log_id || [row.timestamp, row.resource, row.source_record_id, row.action, row.actor].join("|");
+          if (!rowsById.has(key)) rowsById.set(key, row);
+        }
+      }
+    } else {
+      const baseSamplePerBucket = Math.floor(TREND_SAMPLE_LIMIT / window.buckets);
+      const extraSampleBuckets = TREND_SAMPLE_LIMIT % window.buckets;
+      for (const [index, response] of bucketResponses.entries()) {
+        const sampleLimit = baseSamplePerBucket + (index < extraSampleBuckets ? 1 : 0);
+        const rows = response.data ?? [];
+        const sample = rows.length <= sampleLimit
+          ? rows
+          : Array.from({ length: sampleLimit }, (_, sampleIndex) => {
+            const rowIndex = Math.round(sampleIndex * (rows.length - 1) / (sampleLimit - 1));
+            return rows[rowIndex];
+          });
+        for (const row of sample) {
+          const key = row.log_id || [row.timestamp, row.resource, row.source_record_id, row.action, row.actor].join("|");
+          if (!rowsById.has(key)) rowsById.set(key, row);
+        }
+      }
+    }
+
+    const resolvedTotalItems = exactRows ? rowsById.size : totalItems;
+    return buildIntegrityTrend([...rowsById.values()], range, resolvedTotalItems, window);
   }
 
   async getRecentActivity(token?: string, limit = 10): Promise<AuditActivity[]> {
@@ -408,6 +489,7 @@ export class ApiDashboardService {
       table: row.resource || "Unknown resource",
       action: normalizeAction(row.action),
       record: row.source_record_id || row.log_id || "Unknown record",
+      metadata: row.metadata,
       actor: row.actor || "System",
       status: normalizeStatus(row.integrity_status),
     }));

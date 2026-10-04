@@ -141,6 +141,7 @@ export interface AuditActivity {
   table: string;
   action: AuditAction;
   record: string;
+  metadata?: unknown;
   actor: string;
   status: AuditStatus;
 }

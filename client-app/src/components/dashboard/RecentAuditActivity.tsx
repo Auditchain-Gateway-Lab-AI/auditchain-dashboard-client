@@ -32,10 +32,10 @@ export function RecentAuditActivity({ data }: { data: AuditActivity[] }) {
           <EmptyState message="No recent activity." />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[610px] border-collapse text-[10px]">
+            <table className="w-full min-w-[780px] border-collapse text-[10px]">
               <thead>
                 <tr className="text-[9px] uppercase tracking-[0.08em] text-ink-faint">
-                  <Head>Time</Head><Head>Table</Head><Head>Action</Head><Head>Record</Head><Head>Actor</Head><Head className="text-right">Status</Head>
+                  <Head>Time</Head><Head>Table</Head><Head>Action</Head><Head>Metadata</Head><Head>Actor</Head><Head className="text-right">Status</Head>
                 </tr>
               </thead>
               <tbody>
@@ -44,7 +44,9 @@ export function RecentAuditActivity({ data }: { data: AuditActivity[] }) {
                     <Cell className="font-mono text-ink-faint">{event.time}</Cell>
                     <Cell className="font-mono font-semibold text-ink">{event.table}</Cell>
                     <Cell className={cn("font-mono text-[9px] font-semibold", actionClass[event.action])}>{event.action}</Cell>
-                    <Cell className="font-mono text-ink-dim">{event.record}</Cell>
+                    <Cell>
+                      <MetadataValue value={event.metadata} />
+                    </Cell>
                     <Cell className="font-mono text-ink-faint">{event.actor}</Cell>
                     <Cell className="text-right"><Badge tone={statusTone[event.status]}>{event.status}</Badge></Cell>
                   </tr>
@@ -56,6 +58,37 @@ export function RecentAuditActivity({ data }: { data: AuditActivity[] }) {
       </CardContent>
     </Card>
   );
+}
+
+function MetadataValue({ value }: { value: unknown }) {
+  const metadata = formatMetadata(value);
+
+  return (
+    <div
+      className="max-w-[360px] overflow-hidden rounded-md border border-line bg-ground px-2 py-1.5 font-mono text-[9px] leading-4 text-ink-dim"
+      title={metadata}
+    >
+      <div className="truncate whitespace-nowrap">{metadata}</div>
+    </div>
+  );
+}
+
+function formatMetadata(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+
+  if (typeof value === "string") {
+    try {
+      return JSON.stringify(JSON.parse(value));
+    } catch {
+      return value;
+    }
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }
 
 function Head({ className, children }: { className?: string; children: ReactNode }) {

@@ -34,7 +34,7 @@ export function IntegrityTrend() {
   const totalItems = trend.data?.[0]?.totalItems ?? 0;
   const sourceLabel = dashboardMockEnabled
     ? `Mock service - ${range}`
-    : `Live audit sample ${formatNumber(sampleSize)}${totalItems > sampleSize ? `/${formatNumber(totalItems)}` : ""} - ${range}`;
+    : `${sampleSize < totalItems ? "Live audit sample" : "Live audit"} ${formatNumber(sampleSize)}${totalItems > sampleSize ? `/${formatNumber(totalItems)}` : ""} - ${range}`;
 
   return (
     <Card className="flex h-full flex-col overflow-hidden">
