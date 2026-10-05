@@ -23,7 +23,7 @@ export function DashboardHeader({ tenant, organization, updatedAt, isRefreshing,
       <div className="flex min-h-16 items-center gap-3 px-3 lg:px-4">
         <div className="flex min-w-0 items-center gap-2.5">
           <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-line-strong bg-ground p-1.5 shadow-inner">
-            <img src="/logo-ag-new.png" alt="AuditChain" className="size-full object-contain" />
+            <img src="/auditchain-logo.png" alt="AuditChain" className="size-full object-contain" />
           </div>
           <div className="min-w-0 leading-tight">
             <div className="truncate text-sm font-semibold tracking-tight text-ink">
@@ -50,7 +50,7 @@ export function DashboardHeader({ tenant, organization, updatedAt, isRefreshing,
               Updated <span className="font-semibold text-ink-dim">{formatTime(updatedAt)}</span>
             </div>
             <div className="mt-0.5 flex items-center justify-end gap-1.5 text-[9px] uppercase tracking-[0.09em] text-ink-faint">
-              <span className="size-1.5 rounded-full bg-success" /> Live sync
+              <span className="size-1.5 rounded-full bg-success animate-pulse" /> Auto refresh 30s
             </div>
           </div>
 
