@@ -3,7 +3,6 @@ import {
   dashboardOverviewMock,
   issuesMock,
   latestAuditScanMock,
-  recentActivityMock,
   tableInsightsMock,
   watchlistMock,
 } from "@/mocks/dashboard.mock";
@@ -61,10 +60,6 @@ export class MockDashboardService implements DashboardService {
 
   getTableInsights() {
     return respond(tableInsightsMock, 280);
-  }
-
-  getRecentActivity(_token?: string, limit = 10) {
-    return respond(recentActivityMock.slice(0, Math.min(limit, 10)), 340);
   }
 
   getIssues() {

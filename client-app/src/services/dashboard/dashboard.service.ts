@@ -1,6 +1,5 @@
 import type {
-  AuditActivity,
-  AuditIssue,
+	AuditIssue,
   DashboardOverview,
   LatestAuditScan,
   TableInsightsData,
@@ -25,6 +24,5 @@ export interface DashboardService {
   getLatestVerificationRun(token?: string): Promise<VerificationRun | null>;
   getLatestScan(): Promise<LatestAuditScan>;
   getTableInsights(): Promise<TableInsightsData>;
-  getRecentActivity(token?: string, limit?: number): Promise<AuditActivity[]>;
-  getIssues(): Promise<AuditIssue[]>;
+	getIssues(): Promise<AuditIssue[]>;
 }

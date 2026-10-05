@@ -18,7 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useIntegrityTrend } from "@/hooks/useDashboard";
 import { cn, formatNumber } from "@/lib/utils";
 import { dashboardMockEnabled } from "@/services/dashboard";
-import type { TrendRange, TrendTab } from "@/types/dashboard";
+import type { TrendPoint, TrendRange, TrendTab } from "@/types/dashboard";
 
 const ranges: TrendRange[] = ["8H", "24H", "7D", "30D"];
 const tabs: Array<{ id: TrendTab; icon: typeof ShieldCheck }> = [
@@ -30,14 +30,12 @@ export function IntegrityTrend() {
   const [range, setRange] = useState<TrendRange>("8H");
   const [tab, setTab] = useState<TrendTab>("INTEGRITY");
   const trend = useIntegrityTrend(range);
-  const sampleSize = trend.data?.[0]?.sampleSize ?? 0;
-  const totalItems = trend.data?.[0]?.totalItems ?? 0;
-  const isSampled = sampleSize < totalItems;
-  const validLabel = isSampled ? "Valid sample" : "Valid Logs";
-  const tamperedLabel = isSampled ? "Tampered sample" : "Tampered";
+  const totalLogs = trend.data?.reduce((total, point) => total + point.totalLogs, 0) ?? 0;
+  const validLabel = "Valid Logs";
+  const tamperedLabel = "Tampered";
   const sourceLabel = dashboardMockEnabled
     ? `Mock service - ${range}`
-    : `${sampleSize < totalItems ? "Live audit sample" : "Live audit"} ${formatNumber(sampleSize)}${totalItems > sampleSize ? `/${formatNumber(totalItems)}` : ""} - ${range}`;
+    : `Aggregated ${formatNumber(totalLogs)} logs - ${range}`;
 
   return (
     <Card className="flex h-full flex-col overflow-hidden">
@@ -95,9 +93,9 @@ export function IntegrityTrend() {
                   </>
                 ) : (
                   <>
-                    <Legend color="bg-success" label={isSampled ? "Insert sample" : "Insert"} />
-                    <Legend color="bg-info" label={isSampled ? "Update sample" : "Update"} />
-                    <Legend color="bg-danger" label={isSampled ? "Delete sample" : "Delete"} />
+                    <Legend color="bg-success" label="Insert" />
+                    <Legend color="bg-info" label="Update" />
+                    <Legend color="bg-danger" label="Delete" />
                   </>
                 )}
               </div>
@@ -115,7 +113,43 @@ export function IntegrityTrend() {
                   <CartesianGrid stroke="rgba(255,255,255,0.055)" strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="label" stroke="#61748c" tickLine={false} axisLine={false} tick={{ fontSize: 9, fontFamily: "JetBrains Mono" }} />
                   <YAxis stroke="#61748c" tickLine={false} axisLine={false} tick={{ fontSize: 9, fontFamily: "JetBrains Mono" }} />
-                  <Tooltip contentStyle={{ background: "#101e30", border: "1px solid rgba(255,255,255,.12)", borderRadius: 8, fontSize: 10 }} labelStyle={{ color: "#9fb0c4" }} />
+                  <Tooltip
+                    content={(props) => {
+                      const point = props.payload?.[0]?.payload as TrendPoint | undefined;
+                      if (!props.active || !point) return null;
+
+                      const rows: Array<[string, number]> = tab === "INTEGRITY"
+                        ? [
+                            ["Total logs", point.totalLogs],
+                            ["Valid", point.valid],
+                            ["Tampered", point.tampered],
+                            ["Pending", point.pending],
+                            ["Unavailable", point.unavailable],
+                            ["Not checked", point.notChecked],
+                          ]
+                        : [
+                            ["Total audit events", point.totalLogs],
+                            ["Insert", point.insert],
+                            ["Update", point.update],
+                            ["Delete", point.delete],
+                            ["Other actions", Math.max(0, point.totalLogs - point.insert - point.update - point.delete)],
+                          ];
+
+                      return (
+                        <div className="min-w-36 rounded-md border border-line bg-panel px-3 py-2 text-[10px] shadow-xl">
+                          <p className="mb-1.5 font-mono font-semibold text-ink">{props.label}</p>
+                          <div className="space-y-1">
+                            {rows.map(([label, value]) => (
+                              <div key={label} className="flex justify-between gap-4 text-ink-dim">
+                                <span>{label}</span>
+                                <span className="font-mono font-semibold text-ink">{formatNumber(value)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    }}
+                  />
                   {tab === "INTEGRITY" ? (
                     <>
                       <Area type="monotone" dataKey="valid" name={validLabel} stroke="#22c47c" strokeWidth={2} fill="url(#validFill)" />
@@ -123,9 +157,9 @@ export function IntegrityTrend() {
                     </>
                   ) : (
                     <>
-                      <Bar dataKey="insert" name={isSampled ? "Insert sample" : "Insert"} fill="#22c47c" opacity={0.82} radius={[2, 2, 0, 0]} />
-                      <Bar dataKey="update" name={isSampled ? "Update sample" : "Update"} fill="#4a92ec" opacity={0.82} radius={[2, 2, 0, 0]} />
-                      <Bar dataKey="delete" name={isSampled ? "Delete sample" : "Delete"} fill="#f0555c" opacity={0.82} radius={[2, 2, 0, 0]} />
+                      <Bar dataKey="insert" name="Insert" fill="#22c47c" opacity={0.82} radius={[2, 2, 0, 0]} />
+                      <Bar dataKey="update" name="Update" fill="#4a92ec" opacity={0.82} radius={[2, 2, 0, 0]} />
+                      <Bar dataKey="delete" name="Delete" fill="#f0555c" opacity={0.82} radius={[2, 2, 0, 0]} />
                     </>
                   )}
                 </ComposedChart>

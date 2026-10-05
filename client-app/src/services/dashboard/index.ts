@@ -8,9 +8,6 @@ export const dashboardService: DashboardService = {
   getOverview: (token, workspace) => dashboardMockEnabled
     ? mockDashboardService.getOverview(token, workspace)
     : apiDashboardService.getOverview(token, workspace),
-  getRecentActivity: (token, limit) => dashboardMockEnabled
-    ? mockDashboardService.getRecentActivity(token, limit)
-    : apiDashboardService.getRecentActivity(token, limit),
   getIntegrityTrend: (range, token) => dashboardMockEnabled
     ? mockDashboardService.getIntegrityTrend(range, token)
     : apiDashboardService.getIntegrityTrend(range, token),
