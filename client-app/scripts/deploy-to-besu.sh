@@ -143,7 +143,21 @@ fi
 printf '%s' "$GHCR_READ_TOKEN" | docker login ghcr.io --username "$ghcr_username" --password-stdin
 unset GHCR_READ_TOKEN
 
-"${compose_cmd[@]}" "${staged_compose_options[@]}" pull dashboard
+pull_attempt=1
+max_pull_attempts=3
+until "${compose_cmd[@]}" "${staged_compose_options[@]}" pull dashboard; do
+  if (( pull_attempt >= max_pull_attempts )); then
+    printf 'GHCR image pull failed after %s attempts; the running dashboard was not changed.\n' \
+      "$max_pull_attempts" >&2
+    exit 1
+  fi
+
+  retry_delay=$((pull_attempt * 10))
+  printf 'Image pull attempt %s/%s failed; retrying in %s seconds.\n' \
+    "$pull_attempt" "$max_pull_attempts" "$retry_delay" >&2
+  sleep "$retry_delay"
+  pull_attempt=$((pull_attempt + 1))
+done
 mv -f -- "$new_compose_file" "$compose_file"
 mv -f -- "$new_env_file" "$env_file"
 
