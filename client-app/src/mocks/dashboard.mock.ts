@@ -1,5 +1,4 @@
 import type {
-  AuditActivity,
   AuditIssue,
   DashboardOverview,
   LatestAuditScan,
@@ -69,19 +68,6 @@ export const tableInsightsMock: TableInsightsData = {
   ],
 };
 
-export const recentActivityMock: AuditActivity[] = [
-  { id: "evt-01", time: "11:28:16", table: "OBAT", action: "UPDATE", record: "#173", actor: "svc-sync", status: "VALID" },
-  { id: "evt-02", time: "11:28:14", table: "RUANGAN", action: "UPDATE", record: "#615", actor: "petugas04", status: "VALID" },
-  { id: "evt-03", time: "11:28:12", table: "TRANSAKSI", action: "INSERT", record: "#532", actor: "POLINEMA", status: "VALID" },
-  { id: "evt-04", time: "11:28:10", table: "PAYMENT", action: "UPDATE", record: "#920", actor: "test123", status: "VALID" },
-  { id: "evt-05", time: "11:28:08", table: "TRANSAKSI", action: "UPDATE", record: "#967", actor: "mbi", status: "VALID" },
-  { id: "evt-06", time: "11:28:06", table: "TRANSAKSI", action: "UPDATE", record: "#393", actor: "svc-sync", status: "VALID" },
-  { id: "evt-07", time: "11:28:04", table: "RUANGAN", action: "UPDATE", record: "#975", actor: "svc-sync", status: "VALID" },
-  { id: "evt-08", time: "11:28:02", table: "RUANGAN", action: "DELETE", record: "#438", actor: "system", status: "TAMPERED" },
-  { id: "evt-09", time: "11:28:00", table: "USERS", action: "UPDATE", record: "#698", actor: "admin", status: "VALID" },
-  { id: "evt-10", time: "11:27:58", table: "PAYMENT", action: "UPDATE", record: "#394", actor: "system", status: "VALID" },
-];
-
 export const issuesMock: AuditIssue[] = [
   {
     id: "issue-01",
@@ -129,8 +115,12 @@ export function buildTrendMock(range: TrendRange): TrendPoint[] {
   const { labels, scale } = trendShape[range];
   return labels.map((label, index) => ({
     label,
+    totalLogs: Math.round(((insertBase[index] ?? 121) + (updateBase[index] ?? 294) + (deleteBase[index] ?? 23)) * scale),
     valid: Math.round((validBase[index] ?? 482) * scale),
     tampered: tamperedBase[index] ?? 0,
+    pending: 0,
+    unavailable: 0,
+    notChecked: 0,
     insert: Math.round((insertBase[index] ?? 121) * scale),
     update: Math.round((updateBase[index] ?? 294) * scale),
     delete: Math.round((deleteBase[index] ?? 23) * scale),

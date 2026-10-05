@@ -18,7 +18,6 @@ export const dashboardKeys = {
   latestScan: ["dashboard", "latest-scan"] as const,
   verificationRun: ["dashboard", "verification-run"] as const,
   insights: ["dashboard", "insights"] as const,
-  activity: ["dashboard", "recent-activity"] as const,
   issues: ["dashboard", "issues"] as const,
   trend: (range: TrendRange) => ["dashboard", "trend", range] as const,
 };
@@ -59,15 +58,6 @@ export function useDashboardData() {
     refetchOnWindowFocus: true,
   });
   const insights = useQuery({ queryKey: dashboardKeys.insights, queryFn: () => dashboardService.getTableInsights(), enabled: dashboardMockEnabled && hasSession });
-  const activity = useQuery({
-    queryKey: dashboardKeys.activity,
-    queryFn: () => dashboardService.getRecentActivity(session?.token, 10),
-    enabled: hasSession,
-    refetchInterval: dashboardMockEnabled ? false : liveDashboardRefreshMs,
-    refetchIntervalInBackground: !dashboardMockEnabled,
-    refetchOnWindowFocus: true,
-    refetchOnReconnect: true,
-  });
   const issues = useQuery({ queryKey: dashboardKeys.issues, queryFn: () => dashboardService.getIssues(), enabled: dashboardMockEnabled && hasSession });
 
   const observedRunRef = useRef<string | null>(null);
@@ -85,14 +75,13 @@ export function useDashboardData() {
     void Promise.all([
       queryClient.invalidateQueries({ queryKey: dashboardKeys.overview }),
       queryClient.invalidateQueries({ queryKey: dashboardKeys.inventory }),
-      queryClient.invalidateQueries({ queryKey: dashboardKeys.activity }),
       queryClient.invalidateQueries({ queryKey: ["dashboard", "trend"] }),
     ]);
   }, [queryClient, verificationRun.data]);
 
   const queries = dashboardMockEnabled
-    ? [overview, tables, latestScan, insights, activity, issues]
-    : [overview, activity, inventory, verificationRun];
+    ? [overview, tables, latestScan, insights, issues]
+    : [overview, inventory, verificationRun];
   return {
     overview,
     tables,
@@ -100,7 +89,6 @@ export function useDashboardData() {
     latestScan,
     verificationRun,
     insights,
-    activity,
     issues,
     isInitialLoading: queries.some((query) => query.isPending),
     isError: queries.some((query) => query.isError),

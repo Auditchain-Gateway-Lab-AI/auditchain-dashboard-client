@@ -2,7 +2,6 @@ export type TrendRange = "8H" | "24H" | "7D" | "30D";
 export type TrendTab = "INTEGRITY" | "ACTIVITY";
 export type ActivityLevel = "VERY HIGH" | "HIGH" | "NORMAL" | "LOW" | "IDLE";
 export type AuditAction = "INSERT" | "UPDATE" | "DELETE" | "OTHER";
-export type AuditStatus = "VALID" | "TAMPERED" | "PENDING" | "UNAVAILABLE" | "NOT_CHECKED";
 
 export interface DashboardOverview {
   tenant: string;
@@ -103,13 +102,15 @@ export interface VerificationRun {
 
 export interface TrendPoint {
   label: string;
+  totalLogs: number;
   valid: number;
   tampered: number;
+  pending: number;
+  unavailable: number;
+  notChecked: number;
   insert: number;
   update: number;
   delete: number;
-  sampleSize?: number;
-  totalItems?: number;
 }
 
 export interface LatestAuditScan {
@@ -133,17 +134,6 @@ export interface TableInsightsData {
   mostActive: InsightRow[];
   mostTampered: InsightRow[];
   mostDeletes: InsightRow[];
-}
-
-export interface AuditActivity {
-  id: string;
-  time: string;
-  table: string;
-  action: AuditAction;
-  record: string;
-  metadata?: unknown;
-  actor: string;
-  status: AuditStatus;
 }
 
 export interface AuditIssue {

@@ -2,8 +2,6 @@ import { apiClient } from "@/services/api/client";
 import type { ClientWorkspace } from "@/types/auth";
 import type {
   AuditAction,
-  AuditActivity,
-  AuditStatus,
   DashboardOverview,
   TableInventoryItem,
   TableVerificationSummary,
@@ -36,6 +34,21 @@ interface DashboardStatsData {
   integrity_score?: number | string | null;
   last_verified_at?: string | null;
   table_verify_results?: Record<string, Record<string, unknown>> | null;
+  trend?: {
+    range?: TrendRange;
+    points?: Array<{
+      bucket_start?: string;
+      total_logs?: number;
+      valid?: number;
+      tampered?: number;
+      pending?: number;
+      unavailable?: number;
+      not_checked?: number;
+      insert?: number;
+      update?: number;
+      delete?: number;
+    }>;
+  };
 }
 
 interface DashboardStatsResponse {
@@ -44,28 +57,6 @@ interface DashboardStatsResponse {
   pending_logs?: number;
   data?: DashboardStatsData;
 }
-
-interface BackendAuditLog {
-  log_id?: string;
-  resource?: string;
-  action?: string;
-  actor?: string;
-  timestamp?: string;
-  source_record_id?: string;
-  metadata?: unknown;
-  integrity_status?: string;
-}
-
-interface RecentLogsResponse {
-  data?: BackendAuditLog[];
-  pagination?: {
-    total_items?: number;
-  };
-}
-
-const TREND_SAMPLE_LIMIT = 100;
-const TREND_EXACT_LIMIT = 2_000;
-const TREND_PAGE_SIZE = 100;
 
 interface BackendInventoryItem {
   table_name?: string;
@@ -189,93 +180,13 @@ function formatActivityTime(value: unknown) {
   }).format(date);
 }
 
-function getTrendWindow(range: TrendRange) {
-  const durations: Record<TrendRange, { durationMs: number; buckets: number }> = {
-    "8H": { durationMs: 8 * 60 * 60 * 1000, buckets: 8 },
-    "24H": { durationMs: 24 * 60 * 60 * 1000, buckets: 12 },
-    "7D": { durationMs: 7 * 24 * 60 * 60 * 1000, buckets: 7 },
-    "30D": { durationMs: 30 * 24 * 60 * 60 * 1000, buckets: 10 },
-  };
-  const now = new Date();
-  const config = durations[range];
-  return {
-    from: new Date(now.getTime() - config.durationMs),
-    to: now,
-    buckets: config.buckets,
-    bucketMs: config.durationMs / config.buckets,
-  };
-}
-
-function formatTrendLabel(value: Date, range: TrendRange) {
+function formatTrendLabel(value: string, range: TrendRange) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
   const options: Intl.DateTimeFormatOptions = range === "7D" || range === "30D"
     ? { day: "2-digit", month: "short" }
     : { hour: "2-digit", minute: "2-digit", hour12: false };
-  return new Intl.DateTimeFormat("en-GB", options).format(value);
-}
-
-function buildIntegrityTrend(
-  rows: BackendAuditLog[],
-  range: TrendRange,
-  totalItems: number,
-  window = getTrendWindow(range),
-): Array<{
-  label: string;
-  valid: number;
-  tampered: number;
-  insert: number;
-  update: number;
-  delete: number;
-  sampleSize: number;
-  totalItems: number;
-}> {
-  if (rows.length === 0) return [];
-
-  const points = Array.from({ length: window.buckets }, (_, index) => ({
-    label: formatTrendLabel(
-      index === window.buckets - 1
-        ? window.to
-        : new Date(window.from.getTime() + (index + 1) * window.bucketMs),
-      range,
-    ),
-    valid: 0,
-    tampered: 0,
-    insert: 0,
-    update: 0,
-    delete: 0,
-    sampleSize: rows.length,
-    totalItems,
-  }));
-
-  for (const row of rows) {
-    const timestamp = new Date(String(row.timestamp ?? "")).getTime();
-    if (!Number.isFinite(timestamp)) continue;
-    const index = Math.min(
-      window.buckets - 1,
-      Math.max(0, Math.floor((timestamp - window.from.getTime()) / window.bucketMs)),
-    );
-    const point = points[index];
-    if (!point) continue;
-    const status = String(row.integrity_status ?? "").trim().toLowerCase();
-    const action = normalizeAction(row.action).toLowerCase();
-
-    if (status === "valid") point.valid += 1;
-    if (status === "tampered") point.tampered += 1;
-    switch (action) {
-      case "insert":
-        point.insert += 1;
-        break;
-      case "update":
-        point.update += 1;
-        break;
-      case "delete":
-        point.delete += 1;
-        break;
-      default:
-        break;
-    }
-  }
-
-  return points;
+  return new Intl.DateTimeFormat("en-GB", options).format(date);
 }
 
 function rangeQuery(range: VerificationRangeInput) {
@@ -293,22 +204,6 @@ function normalizeAction(value: unknown): AuditAction {
       return "DELETE";
     default:
       return "OTHER";
-  }
-}
-
-function normalizeStatus(value: unknown): AuditStatus {
-  switch (String(value ?? "").trim().toLowerCase()) {
-    case "valid":
-      return "VALID";
-    case "tampered":
-      return "TAMPERED";
-    case "unreachable":
-      return "UNAVAILABLE";
-    case "pending":
-      return "PENDING";
-    case "not_checked":
-    default:
-      return "NOT_CHECKED";
   }
 }
 
@@ -396,102 +291,20 @@ export class ApiDashboardService {
   async getIntegrityTrend(range: TrendRange, token?: string): Promise<TrendPoint[]> {
     if (!token) throw new Error("Session client tidak tersedia.");
 
-    const window = getTrendWindow(range);
-    const bucketResponses = await Promise.all(
-      Array.from({ length: window.buckets }, (_, index) => {
-        const from = new Date(window.from.getTime() + index * window.bucketMs);
-        const to = index === window.buckets - 1
-          ? window.to
-          : new Date(window.from.getTime() + (index + 1) * window.bucketMs);
-        const params = new URLSearchParams({
-          page: "1",
-          page_size: String(TREND_PAGE_SIZE),
-          sort_order: "desc",
-          from: from.toISOString(),
-          to: to.toISOString(),
-        });
-        return apiClient.get<RecentLogsResponse>(`/dashboard/logs?${params.toString()}`, token);
-      }),
-    );
-
-    const totalItems = bucketResponses.reduce(
-      (total, response) => total + asNumber(response.pagination?.total_items),
-      0,
-    );
-    const exactRows = totalItems <= TREND_EXACT_LIMIT
-      ? await Promise.all(bucketResponses.map(async (response, index) => {
-        const bucketTotal = asNumber(response.pagination?.total_items);
-        const pageCount = Math.ceil(bucketTotal / TREND_PAGE_SIZE);
-        if (pageCount <= 1) return response.data ?? [];
-
-        const from = new Date(window.from.getTime() + index * window.bucketMs);
-        const to = index === window.buckets - 1
-          ? window.to
-          : new Date(window.from.getTime() + (index + 1) * window.bucketMs);
-        const pages = await Promise.all(
-          Array.from({ length: pageCount - 1 }, (_, pageIndex) => {
-            const params = new URLSearchParams({
-              page: String(pageIndex + 2),
-              page_size: String(TREND_PAGE_SIZE),
-              sort_order: "desc",
-              from: from.toISOString(),
-              to: to.toISOString(),
-            });
-            return apiClient.get<RecentLogsResponse>(`/dashboard/logs?${params.toString()}`, token);
-          }),
-        );
-        return [...(response.data ?? []), ...pages.flatMap((page) => page.data ?? [])];
-      }))
-      : null;
-
-    const rowsById = new Map<string, BackendAuditLog>();
-    if (exactRows) {
-      for (const rows of exactRows) {
-        for (const row of rows) {
-          const key = row.log_id || [row.timestamp, row.resource, row.source_record_id, row.action, row.actor].join("|");
-          if (!rowsById.has(key)) rowsById.set(key, row);
-        }
-      }
-    } else {
-      const baseSamplePerBucket = Math.floor(TREND_SAMPLE_LIMIT / window.buckets);
-      const extraSampleBuckets = TREND_SAMPLE_LIMIT % window.buckets;
-      for (const [index, response] of bucketResponses.entries()) {
-        const sampleLimit = baseSamplePerBucket + (index < extraSampleBuckets ? 1 : 0);
-        const rows = response.data ?? [];
-        const sample = rows.length <= sampleLimit
-          ? rows
-          : Array.from({ length: sampleLimit }, (_, sampleIndex) => {
-            const rowIndex = Math.round(sampleIndex * (rows.length - 1) / (sampleLimit - 1));
-            return rows[rowIndex];
-          }).filter((row): row is BackendAuditLog => row !== undefined);
-        for (const row of sample) {
-          const key = row.log_id || [row.timestamp, row.resource, row.source_record_id, row.action, row.actor].join("|");
-          if (!rowsById.has(key)) rowsById.set(key, row);
-        }
-      }
-    }
-
-    const resolvedTotalItems = exactRows ? rowsById.size : totalItems;
-    return buildIntegrityTrend([...rowsById.values()], range, resolvedTotalItems, window);
-  }
-
-  async getRecentActivity(token?: string, limit = 10): Promise<AuditActivity[]> {
-    if (!token) throw new Error("Session client tidak tersedia.");
-
-    const safeLimit = Math.max(1, Math.min(limit, 100));
-    const params = new URLSearchParams({ page: "1", page_size: String(safeLimit), sort_order: "desc" });
-    const response = await apiClient.get<RecentLogsResponse>(`/dashboard/logs?${params.toString()}`, token);
-    const rows = Array.isArray(response.data) ? response.data : [];
-
-    return rows.slice(0, safeLimit).map((row) => ({
-      id: row.log_id || `${row.resource || "resource"}-${row.timestamp || "event"}`,
-      time: formatActivityTime(row.timestamp),
-      table: row.resource || "Unknown resource",
-      action: normalizeAction(row.action),
-      record: row.source_record_id || row.log_id || "Unknown record",
-      metadata: row.metadata,
-      actor: row.actor || "System",
-      status: normalizeStatus(row.integrity_status),
+    const params = new URLSearchParams({ trend_range: range });
+    const response = await apiClient.get<DashboardStatsResponse>(`/dashboard/stats?${params.toString()}`, token);
+    const points = response.data?.trend?.points ?? [];
+    return points.map((point) => ({
+      label: formatTrendLabel(point.bucket_start || "", range),
+      totalLogs: asNumber(point.total_logs),
+      valid: asNumber(point.valid),
+      tampered: asNumber(point.tampered),
+      pending: asNumber(point.pending),
+      unavailable: asNumber(point.unavailable),
+      notChecked: asNumber(point.not_checked),
+      insert: asNumber(point.insert),
+      update: asNumber(point.update),
+      delete: asNumber(point.delete),
     }));
   }
 

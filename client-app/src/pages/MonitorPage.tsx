@@ -5,7 +5,6 @@ import { LiveNeedsAttention } from "@/components/dashboard/LiveNeedsAttention";
 import { LiveTableInsights } from "@/components/dashboard/LiveTableInsights";
 import { NeedsAttention } from "@/components/dashboard/NeedsAttention";
 import { OverviewStats } from "@/components/dashboard/OverviewStats";
-import { RecentAuditActivity } from "@/components/dashboard/RecentAuditActivity";
 import { TableInsights } from "@/components/dashboard/TableInsights";
 import { TableInventory } from "@/components/dashboard/TableInventory";
 import { TableWatchlist } from "@/components/dashboard/TableWatchlist";
@@ -21,8 +20,8 @@ export function MonitorPage() {
 
   if (dashboard.isInitialLoading) return <DashboardSkeleton />;
 
-  const { overview, tables, inventory, latestScan, insights, activity, issues, verificationRun } = dashboard;
-  const hasMissingData = !overview.data || !activity.data || (dashboardMockEnabled
+  const { overview, tables, inventory, latestScan, insights, issues, verificationRun } = dashboard;
+  const hasMissingData = !overview.data || (dashboardMockEnabled
     ? (!tables.data || !latestScan.data || !insights.data || !issues.data)
     : !inventory.data || verificationRun.data === undefined);
 
@@ -50,9 +49,8 @@ export function MonitorPage() {
             <div className="xl:col-span-3"><LatestAuditScan data={latestScan.data!} /></div>
           </div>
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">
-            <div className="xl:col-span-3"><TableInsights data={insights.data ?? { mostActive: [], mostTampered: [], mostDeletes: [] }} /></div>
-            <div className="xl:col-span-6"><RecentAuditActivity data={activity.data} /></div>
-            <div className="xl:col-span-3"><NeedsAttention data={issues.data ?? []} /></div>
+            <div className="xl:col-span-6"><TableInsights data={insights.data ?? { mostActive: [], mostTampered: [], mostDeletes: [] }} /></div>
+            <div className="xl:col-span-6"><NeedsAttention data={issues.data ?? []} /></div>
           </div>
         </>
       ) : (
@@ -63,9 +61,8 @@ export function MonitorPage() {
             <div className="xl:col-span-3"><VerificationSnapshot data={overview.data} run={verificationRun.data ?? null} /></div>
           </div>
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">
-            <div className="xl:col-span-3"><LiveTableInsights inventory={inventory.data ?? []} overview={overview.data} /></div>
-            <div className="xl:col-span-6"><RecentAuditActivity data={activity.data} /></div>
-            <div className="xl:col-span-3"><LiveNeedsAttention overview={overview.data} /></div>
+            <div className="xl:col-span-5"><LiveTableInsights inventory={inventory.data ?? []} overview={overview.data} /></div>
+            <div className="xl:col-span-7"><LiveNeedsAttention overview={overview.data} /></div>
           </div>
         </>
       )}
