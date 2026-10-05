@@ -463,7 +463,7 @@ export class ApiDashboardService {
           : Array.from({ length: sampleLimit }, (_, sampleIndex) => {
             const rowIndex = Math.round(sampleIndex * (rows.length - 1) / (sampleLimit - 1));
             return rows[rowIndex];
-          });
+          }).filter((row): row is BackendAuditLog => row !== undefined);
         for (const row of sample) {
           const key = row.log_id || [row.timestamp, row.resource, row.source_record_id, row.action, row.actor].join("|");
           if (!rowsById.has(key)) rowsById.set(key, row);

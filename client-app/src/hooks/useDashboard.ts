@@ -6,8 +6,9 @@ import { useAuth } from "@/hooks/useAuth";
 import type { TrendRange, VerificationRangeInput } from "@/types/dashboard";
 
 const activeVerificationPollMs = 3_000;
-const idleVerificationPollMs = 5_000;
-const liveDashboardRefreshMs = 60_000;
+const idleVerificationPollMs = 30_000;
+export const liveDashboardRefreshMs = 30_000;
+const integrityTrendRefreshMs = 60_000;
 
 export const dashboardKeys = {
   all: ["dashboard"] as const,
@@ -32,7 +33,9 @@ export function useDashboardData() {
     queryFn: () => dashboardService.getOverview(session?.token, session?.user.workspace),
     enabled: hasSession,
     refetchInterval: liveDashboardRefreshMs,
+    refetchIntervalInBackground: true,
     refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
   const tables = useQuery({ queryKey: dashboardKeys.tables, queryFn: () => dashboardService.getTables(), enabled: dashboardMockEnabled && hasSession });
   const inventory = useQuery({
@@ -40,7 +43,9 @@ export function useDashboardData() {
     queryFn: () => dashboardService.getInventory(session?.token),
     enabled: !dashboardMockEnabled && hasSession,
     refetchInterval: liveDashboardRefreshMs,
+    refetchIntervalInBackground: true,
     refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
   const latestScan = useQuery({ queryKey: dashboardKeys.latestScan, queryFn: () => dashboardService.getLatestScan(), enabled: dashboardMockEnabled && hasSession });
   const verificationRun = useQuery({
@@ -51,6 +56,7 @@ export function useDashboardData() {
       const status = query.state.data?.status;
       return status === "QUEUED" || status === "RUNNING" ? activeVerificationPollMs : idleVerificationPollMs;
     },
+    refetchOnWindowFocus: true,
   });
   const insights = useQuery({ queryKey: dashboardKeys.insights, queryFn: () => dashboardService.getTableInsights(), enabled: dashboardMockEnabled && hasSession });
   const activity = useQuery({
@@ -58,7 +64,9 @@ export function useDashboardData() {
     queryFn: () => dashboardService.getRecentActivity(session?.token, 10),
     enabled: hasSession,
     refetchInterval: dashboardMockEnabled ? false : liveDashboardRefreshMs,
+    refetchIntervalInBackground: !dashboardMockEnabled,
     refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
   const issues = useQuery({ queryKey: dashboardKeys.issues, queryFn: () => dashboardService.getIssues(), enabled: dashboardMockEnabled && hasSession });
 
@@ -106,8 +114,9 @@ export function useIntegrityTrend(range: TrendRange) {
     queryKey: dashboardKeys.trend(range),
     queryFn: () => dashboardService.getIntegrityTrend(range, session?.token),
     enabled: dashboardMockEnabled || Boolean(session?.token),
-    refetchInterval: dashboardMockEnabled ? false : liveDashboardRefreshMs,
+    refetchInterval: dashboardMockEnabled ? false : integrityTrendRefreshMs,
     refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 }
 

@@ -57,6 +57,7 @@ export async function request<T>(path: string, options: RequestInit = {}, token?
   try {
     response = await fetch(`${API_BASE_URL}/${path.replace(/^\/+/, "")}`, {
       ...options,
+      cache: options.method?.toUpperCase() === "GET" || !options.method ? "no-store" : options.cache,
       headers,
     });
   } catch (error) {
