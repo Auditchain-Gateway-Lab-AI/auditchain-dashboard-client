@@ -13,11 +13,12 @@ export function VerificationSnapshot({ data, run }: { data: DashboardOverview; r
     : run?.status === "COMPLETED"
       ? "success"
       : "info";
+  const unavailable = data.verificationUnavailable ?? 0;
   const metrics = [
     { label: "Valid", value: data.valid, tone: "text-success" },
     { label: "Needs attention", value: data.tampered, tone: "text-danger" },
     { label: "Pending", value: data.verificationPending ?? 0, tone: "text-warning" },
-    { label: "Unavailable", value: data.verificationUnavailable ?? 0, tone: "text-warning" },
+    { label: "Unavailable", value: unavailable, tone: unavailable > 0 ? "text-warning" : "text-ink-faint", alwaysShow: true },
   ];
 
   return (
@@ -36,7 +37,9 @@ export function VerificationSnapshot({ data, run }: { data: DashboardOverview; r
           {metrics.map((metric) => (
             <div key={metric.label} className="flex items-center justify-between gap-2 text-[10px]">
               <span className="text-ink-dim">{metric.label}</span>
-              <span className={`font-mono font-semibold ${hasChecks ? metric.tone : "text-ink-faint"}`}>{hasChecks ? formatNumber(metric.value) : "N/A"}</span>
+              <span className={`font-mono font-semibold ${hasChecks || metric.alwaysShow ? metric.tone : "text-ink-faint"}`}>
+                {hasChecks || metric.alwaysShow ? formatNumber(metric.value) : "N/A"}
+              </span>
             </div>
           ))}
         </div>
