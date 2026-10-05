@@ -32,6 +32,9 @@ export function IntegrityTrend() {
   const trend = useIntegrityTrend(range);
   const sampleSize = trend.data?.[0]?.sampleSize ?? 0;
   const totalItems = trend.data?.[0]?.totalItems ?? 0;
+  const isSampled = sampleSize < totalItems;
+  const validLabel = isSampled ? "Valid sample" : "Valid Logs";
+  const tamperedLabel = isSampled ? "Tampered sample" : "Tampered";
   const sourceLabel = dashboardMockEnabled
     ? `Mock service - ${range}`
     : `${sampleSize < totalItems ? "Live audit sample" : "Live audit"} ${formatNumber(sampleSize)}${totalItems > sampleSize ? `/${formatNumber(totalItems)}` : ""} - ${range}`;
@@ -87,14 +90,14 @@ export function IntegrityTrend() {
               <div className="flex items-center gap-3 text-[9px] text-ink-faint">
                 {tab === "INTEGRITY" ? (
                   <>
-                    <Legend color="bg-success" label="Valid Logs" />
-                    <Legend color="bg-danger" label="Tampered" />
+                    <Legend color="bg-success" label={validLabel} />
+                    <Legend color="bg-danger" label={tamperedLabel} />
                   </>
                 ) : (
                   <>
-                    <Legend color="bg-success" label="Insert" />
-                    <Legend color="bg-info" label="Update" />
-                    <Legend color="bg-danger" label="Delete" />
+                    <Legend color="bg-success" label={isSampled ? "Insert sample" : "Insert"} />
+                    <Legend color="bg-info" label={isSampled ? "Update sample" : "Update"} />
+                    <Legend color="bg-danger" label={isSampled ? "Delete sample" : "Delete"} />
                   </>
                 )}
               </div>
@@ -115,14 +118,14 @@ export function IntegrityTrend() {
                   <Tooltip contentStyle={{ background: "#101e30", border: "1px solid rgba(255,255,255,.12)", borderRadius: 8, fontSize: 10 }} labelStyle={{ color: "#9fb0c4" }} />
                   {tab === "INTEGRITY" ? (
                     <>
-                      <Area type="monotone" dataKey="valid" name="Valid Logs" stroke="#22c47c" strokeWidth={2} fill="url(#validFill)" />
-                      <Line type="monotone" dataKey="tampered" name="Tampered" stroke="#f0555c" strokeWidth={2} dot={{ r: 2, fill: "#f0555c" }} yAxisId={0} />
+                      <Area type="monotone" dataKey="valid" name={validLabel} stroke="#22c47c" strokeWidth={2} fill="url(#validFill)" />
+                      <Line type="monotone" dataKey="tampered" name={tamperedLabel} stroke="#f0555c" strokeWidth={2} dot={{ r: 2, fill: "#f0555c" }} yAxisId={0} />
                     </>
                   ) : (
                     <>
-                      <Bar dataKey="insert" name="Insert" fill="#22c47c" opacity={0.82} radius={[2, 2, 0, 0]} />
-                      <Bar dataKey="update" name="Update" fill="#4a92ec" opacity={0.82} radius={[2, 2, 0, 0]} />
-                      <Bar dataKey="delete" name="Delete" fill="#f0555c" opacity={0.82} radius={[2, 2, 0, 0]} />
+                      <Bar dataKey="insert" name={isSampled ? "Insert sample" : "Insert"} fill="#22c47c" opacity={0.82} radius={[2, 2, 0, 0]} />
+                      <Bar dataKey="update" name={isSampled ? "Update sample" : "Update"} fill="#4a92ec" opacity={0.82} radius={[2, 2, 0, 0]} />
+                      <Bar dataKey="delete" name={isSampled ? "Delete sample" : "Delete"} fill="#f0555c" opacity={0.82} radius={[2, 2, 0, 0]} />
                     </>
                   )}
                 </ComposedChart>

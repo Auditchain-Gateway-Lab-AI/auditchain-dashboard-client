@@ -65,7 +65,7 @@ interface RecentLogsResponse {
 
 const TREND_SAMPLE_LIMIT = 100;
 const TREND_EXACT_LIMIT = 2_000;
-const TREND_PAGE_SIZE = 200;
+const TREND_PAGE_SIZE = 100;
 
 interface BackendInventoryItem {
   table_name?: string;
