@@ -23,6 +23,14 @@ export interface DashboardOverview {
   verificationUnavailable?: number;
   rowsVerified?: number;
   tableVerification?: Record<string, TableVerificationSummary>;
+  latestIntegrityCheck?: IntegrityCheckSummary;
+}
+
+export interface IntegrityCheckSummary {
+  source: string | null;
+  checkedAt: string | null;
+  checkedLogs: number;
+  runId?: string;
 }
 
 export interface TableVerificationSummary {
