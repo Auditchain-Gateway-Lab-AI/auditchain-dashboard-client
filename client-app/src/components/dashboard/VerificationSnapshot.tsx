@@ -1,4 +1,4 @@
-import { Clock3, LoaderCircle, ServerCog, ShieldCheck } from "lucide-react";
+import { Clock3, LoaderCircle, ScanLine, ServerCog, ShieldCheck } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,11 +13,13 @@ export function VerificationSnapshot({ data, run }: { data: DashboardOverview; r
     : run?.status === "COMPLETED"
       ? "success"
       : "info";
+  const unavailable = data.verificationUnavailable ?? 0;
+  const latestCheck = data.latestIntegrityCheck;
   const metrics = [
     { label: "Valid", value: data.valid, tone: "text-success" },
     { label: "Needs attention", value: data.tampered, tone: "text-danger" },
     { label: "Pending", value: data.verificationPending ?? 0, tone: "text-warning" },
-    { label: "Unavailable", value: data.verificationUnavailable ?? 0, tone: "text-warning" },
+    { label: "Unavailable", value: unavailable, tone: unavailable > 0 ? "text-warning" : "text-ink-faint", alwaysShow: true },
   ];
 
   return (
@@ -36,10 +38,26 @@ export function VerificationSnapshot({ data, run }: { data: DashboardOverview; r
           {metrics.map((metric) => (
             <div key={metric.label} className="flex items-center justify-between gap-2 text-[10px]">
               <span className="text-ink-dim">{metric.label}</span>
-              <span className={`font-mono font-semibold ${hasChecks ? metric.tone : "text-ink-faint"}`}>{hasChecks ? formatNumber(metric.value) : "N/A"}</span>
+              <span className={`font-mono font-semibold ${hasChecks || metric.alwaysShow ? metric.tone : "text-ink-faint"}`}>
+                {hasChecks || metric.alwaysShow ? formatNumber(metric.value) : "N/A"}
+              </span>
             </div>
           ))}
         </div>
+        {latestCheck && (
+          <div className="border border-line bg-ground px-3 py-2.5">
+            <div className="flex items-center gap-1.5 text-[9px] uppercase text-ink-faint">
+              <ScanLine className="size-3 text-info" /> Latest integrity check
+            </div>
+            <div className="mt-1 text-[11px] font-semibold text-ink">
+              {integritySourceLabel(latestCheck.source)}
+            </div>
+            <div className="mt-1 flex flex-wrap justify-between gap-x-2 text-[9px] text-ink-faint">
+              <span>{latestCheck.checkedAt || "Source tracking starts after the backend update"}</span>
+              {latestCheck.checkedLogs > 0 && <span>{formatNumber(latestCheck.checkedLogs)} logs</span>}
+            </div>
+          </div>
+        )}
         {run && (
           <div className="mt-auto border border-line bg-elevated px-3 py-2.5">
             <div className="flex items-center justify-between gap-2">
@@ -69,4 +87,23 @@ export function VerificationSnapshot({ data, run }: { data: DashboardOverview; r
       </CardContent>
     </Card>
   );
+}
+
+function integritySourceLabel(source: string | null) {
+  switch (source) {
+    case "TAMPER_SCANNER":
+      return "Automatic tamper scanner";
+    case "MANUAL_VERIFY_RANGE":
+      return "Manual Verify Range";
+    case "BACKGROUND_VERIFY_RUN":
+      return "Background verification";
+    case "SCHEDULED_VERIFY_RUN":
+      return "Backend scheduler";
+    case "MANUAL_SINGLE_LOG":
+      return "Manual single-log check";
+    case "RECOVERY":
+      return "Recovery integrity check";
+    default:
+      return "No provenance recorded yet";
+  }
 }

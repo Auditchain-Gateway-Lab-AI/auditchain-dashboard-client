@@ -124,8 +124,8 @@ export function IntegrityTrend() {
                             ["Valid", point.valid],
                             ["Tampered", point.tampered],
                             ["Pending", point.pending],
-                            ["Unavailable", point.unavailable],
-                            ["Not checked", point.notChecked],
+                            ...(point.unavailable > 0 ? [["Unavailable", point.unavailable] as [string, number]] : []),
+                            ...(point.notChecked > 0 ? [["Not checked", point.notChecked] as [string, number]] : []),
                           ]
                         : [
                             ["Total audit events", point.totalLogs],

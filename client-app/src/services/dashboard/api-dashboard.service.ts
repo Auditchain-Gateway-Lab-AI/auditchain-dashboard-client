@@ -33,6 +33,12 @@ interface DashboardStatsData {
   total_fabric_error?: number;
   integrity_score?: number | string | null;
   last_verified_at?: string | null;
+  integrity_check?: {
+    source?: string | null;
+    checked_at?: string | null;
+    run_id?: string | null;
+    checked_logs?: number;
+  };
   table_verify_results?: Record<string, Record<string, unknown>> | null;
   trend?: {
     range?: TrendRange;
@@ -285,6 +291,12 @@ export class ApiDashboardService {
       verificationUnavailable: asNumber(data.total_agent_error) + asNumber(data.total_fabric_error),
       rowsVerified: asNumber(data.total_rows_verified),
       tableVerification: mapTableVerification(data.table_verify_results),
+      latestIntegrityCheck: {
+        source: data.integrity_check?.source?.trim() || null,
+        checkedAt: data.integrity_check?.checked_at ? formatDateTime(data.integrity_check.checked_at) : null,
+        checkedLogs: asNumber(data.integrity_check?.checked_logs),
+        runId: data.integrity_check?.run_id || undefined,
+      },
     };
   }
 
