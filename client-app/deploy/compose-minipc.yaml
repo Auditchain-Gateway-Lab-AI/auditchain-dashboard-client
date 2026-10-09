@@ -1,0 +1,17 @@
+services:
+  dashboard:
+    image: auditchain-client-portal:sha-a481e60
+    container_name: auditchain-client-portal-compose
+    restart: unless-stopped
+    ports:
+      - "100.87.214.4:3003:8080"
+    environment:
+      AUDITCHAIN_API_UPSTREAM: "http://100.87.214.4:8080"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m,mode=1777
+      - /etc/nginx/conf.d:rw,noexec,nosuid,nodev,size=1m,uid=101,gid=101,mode=755
