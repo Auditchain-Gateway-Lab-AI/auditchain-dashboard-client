@@ -22,12 +22,12 @@ RUN pnpm run build
 
 FROM nginxinc/nginx-unprivileged:stable-alpine AS runner
 
-ENV AUDITCHAIN_API_UPSTREAM=http://api-gateway:8080
-
+ARG CLIENT_CONTAINER_PORT
+ENV CLIENT_CONTAINER_PORT=${CLIENT_CONTAINER_PORT}
 COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=builder /app/dist/ /usr/share/nginx/html/
 
-EXPOSE 8080
+EXPOSE ${CLIENT_CONTAINER_PORT}
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1
+  CMD wget -q -O /dev/null "http://127.0.0.1:${CLIENT_CONTAINER_PORT}/healthz" || exit 1

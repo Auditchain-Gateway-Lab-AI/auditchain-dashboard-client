@@ -1,14 +1,18 @@
+x-besu-deployment-settings:
+  client_url: ${BESU_CLIENT_URL:?BESU_CLIENT_URL is required}
+  gateway_api_url: ${BESU_GATEWAY_API_URL:?BESU_GATEWAY_API_URL is required}
+  admin_portal_url: ${BESU_ADMIN_PORTAL_URL:?BESU_ADMIN_PORTAL_URL is required}
+  container_registry: ${CONTAINER_REGISTRY:?CONTAINER_REGISTRY is required}
+
 services:
   dashboard:
-    image: ${CLIENT_IMAGE:?CLIENT_IMAGE must name the published GHCR image digest}
+    image: ${CLIENT_IMAGE:?CLIENT_IMAGE must name the published image digest}
     container_name: auditchain-client-portal
     restart: unless-stopped
     ports:
-      - "${DASHBOARD_BIND_ADDRESS:-100.125.142.44}:${DASHBOARD_PORT:-3002}:8080"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "${BESU_TAILSCALE_IP:?BESU_TAILSCALE_IP is required}:${BESU_CLIENT_PORT:?BESU_CLIENT_PORT is required}:${CLIENT_CONTAINER_PORT:?CLIENT_CONTAINER_PORT is required}"
     environment:
-      AUDITCHAIN_API_UPSTREAM: ${AUDITCHAIN_API_UPSTREAM:-http://host.docker.internal:8080}
+      AUDITCHAIN_API_UPSTREAM: ${BESU_GATEWAY_API_URL:?BESU_GATEWAY_API_URL is required}
     read_only: true
     cap_drop:
       - ALL

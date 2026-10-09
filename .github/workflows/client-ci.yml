@@ -20,6 +20,7 @@ jobs:
     name: Typecheck and build client
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    environment: development
 
     defaults:
       run:
@@ -28,6 +29,12 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v7
+
+      - name: Validate development build variables
+        env:
+          BESU_ADMIN_PORTAL_URL: ${{ vars.BESU_ADMIN_PORTAL_URL }}
+          CLIENT_CONTAINER_PORT: ${{ vars.CLIENT_CONTAINER_PORT }}
+        run: bash scripts/validate-deployment-config.sh build
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -59,7 +66,8 @@ jobs:
           tags: auditchain-client-ci:${{ github.sha }}
           build-args: |
             VITE_API_BASE_URL=/api
-            VITE_GATEWAY_PORTAL_URL=http://100.125.142.44:3001
+            VITE_GATEWAY_PORTAL_URL=${{ vars.BESU_ADMIN_PORTAL_URL }}
+            CLIENT_CONTAINER_PORT=${{ vars.CLIENT_CONTAINER_PORT }}
           labels: |
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
