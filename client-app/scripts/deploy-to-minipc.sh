@@ -239,12 +239,33 @@ deployment_complete=false
 deployment_mutation_started=false
 rollback_attempted=false
 
+remove_managed_project_containers() {
+  local remaining_container_ids
+
+  if ! "${compose_cmd[@]}" "${staged_compose_options[@]}" down --remove-orphans >/dev/null; then
+    printf '%s\n' "Could not remove the existing Mini PC Compose project before starting a container." >&2
+    return 1
+  fi
+
+  if ! remaining_container_ids="$(docker ps --all --quiet --filter "label=com.docker.compose.project=$project_name")"; then
+    printf '%s\n' "Could not verify that the Mini PC Compose project containers were removed." >&2
+    return 1
+  fi
+  if [[ -n "$remaining_container_ids" ]]; then
+    printf 'Containers remain in Mini PC Compose project %s after cleanup; refusing to recreate them.\n' \
+      "$project_name" >&2
+    return 1
+  fi
+
+  return 0
+}
+
 restore_legacy_portal() {
   local legacy_status files_restored=true
 
   printf 'Restoring the previously running portal container %s from Compose project %s.\n' \
     "$legacy_container_id" "$legacy_project_label" >&2
-  if ! "${compose_cmd[@]}" "${staged_compose_options[@]}" down --remove-orphans >/dev/null; then
+  if ! remove_managed_project_containers; then
     printf '%s\n' "Could not remove the failed Mini PC release; the previous portal remains stopped to avoid a port conflict. Manual recovery is required." >&2
     return 1
   fi
@@ -305,11 +326,15 @@ restore_previous_release() {
 
   printf '%s\n' "The Mini PC dashboard release did not pass health checks; restoring its previous release."
   if [[ "$have_previous_env" == true && "$have_previous_compose" == true ]]; then
+    if ! remove_managed_project_containers; then
+      printf '%s\n' "Could not clean the failed Mini PC containers; previous release files and snapshots remain available for manual recovery." >&2
+      return 1
+    fi
     if ! cp -- "$rollback_env_file" "$env_file" || ! cp -- "$rollback_compose_file" "$compose_file"; then
       printf '%s\n' "Could not restore the previous Mini PC release files; the rollback snapshots remain available for manual recovery." >&2
       return 1
     fi
-    if ! "${compose_cmd[@]}" "${compose_options[@]}" --env-file "$env_file" up --detach --force-recreate dashboard; then
+    if ! "${compose_cmd[@]}" "${compose_options[@]}" --env-file "$env_file" up --detach dashboard; then
       printf '%s\n' "Automatic restoration failed. The previous image and configuration remain in the Mini PC deployment directory." >&2
       return 1
     elif ! wait_for_dashboard_health; then
@@ -317,7 +342,7 @@ restore_previous_release() {
       return 1
     fi
   else
-    if ! "${compose_cmd[@]}" "${staged_compose_options[@]}" down --remove-orphans >/dev/null; then
+    if ! remove_managed_project_containers; then
       printf '%s\n' "Could not remove the failed first release; its Compose files are retained for manual recovery." >&2
       return 1
     fi
@@ -393,7 +418,14 @@ fi
 cp -- "$new_compose_file" "$compose_file"
 cp -- "$new_env_file" "$env_file"
 
-if ! "${compose_cmd[@]}" "${compose_options[@]}" --env-file "$env_file" up --detach --force-recreate dashboard; then
+# Compose v1.29.2 can raise KeyError: 'ContainerConfig' while recreating an existing container.
+# Remove this project first so both the new release and rollback use a fresh-container path.
+if ! remove_managed_project_containers; then
+  restore_previous_release || true
+  exit 1
+fi
+
+if ! "${compose_cmd[@]}" "${compose_options[@]}" --env-file "$env_file" up --detach dashboard; then
   restore_previous_release || true
   exit 1
 fi
