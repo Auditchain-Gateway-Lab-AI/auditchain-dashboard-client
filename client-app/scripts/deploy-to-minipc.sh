@@ -73,24 +73,21 @@ fi
 : "${REGISTRY_READ_TOKEN:?REGISTRY_READ_TOKEN is required}"
 : "${GITHUB_RUN_ID:?GITHUB_RUN_ID is required}"
 
-compose_cmd=(docker compose)
-if ! "${compose_cmd[@]}" version >/dev/null 2>&1; then
-  if ! command -v docker-compose >/dev/null 2>&1; then
-    printf '%s\n' "Docker Compose v2 is required (docker compose plugin or docker-compose standalone)." >&2
-    exit 1
-  fi
-
-  if ! compose_version="$(docker-compose version 2>&1)"; then
-    printf 'Could not run docker-compose: %s\n' "$compose_version" >&2
-    exit 1
-  fi
-  if [[ ! "$compose_version" =~ (^|[[:space:]])v?2\.[0-9]+ ]]; then
-    printf 'Docker Compose v2 is required; docker-compose reported: %s\n' "$compose_version" >&2
-    exit 1
-  fi
-
-  compose_cmd=(docker-compose)
+if ! command -v docker-compose >/dev/null 2>&1; then
+  printf '%s\n' "Docker Compose v1 is required as the docker-compose command." >&2
+  exit 1
 fi
+
+if ! compose_version="$(docker-compose version 2>&1)"; then
+  printf 'Could not run docker-compose: %s\n' "$compose_version" >&2
+  exit 1
+fi
+if [[ ! "$compose_version" =~ (^|[[:space:]])v?1\.29\.2([[:space:],]|$) ]]; then
+  printf 'Docker Compose v1.29.2 is required; docker-compose reported: %s\n' "$compose_version" >&2
+  exit 1
+fi
+
+compose_cmd=(docker-compose)
 printf 'Using Docker Compose command: %s\n' "${compose_cmd[*]}"
 
 if [[ "$deploy_dir" != "$expected_deploy_dir" ]]; then
@@ -115,6 +112,20 @@ readonly env_file="$deploy_dir/.env"
 readonly project_name="auditchain-client-minipc"
 readonly compose_options=(--project-name "$project_name" --project-directory "$deploy_dir" --file "$compose_file")
 readonly port_filter="publish=$dashboard_port"
+readonly health_url="${dashboard_url%/}/healthz"
+
+wait_for_dashboard_health() {
+  local attempt
+  for attempt in {1..30}; do
+    if curl --connect-timeout 2 --fail --silent --output /dev/null --max-time 5 "$health_url"; then
+      return 0
+    fi
+    sleep 2
+  done
+
+  printf 'Dashboard health endpoint did not become ready: %s\n' "$health_url" >&2
+  return 1
+}
 
 existing_container_id=""
 existing_project_label=""
@@ -225,30 +236,58 @@ have_previous_env=false
 have_previous_compose=false
 legacy_stopped=false
 deployment_complete=false
+deployment_mutation_started=false
+rollback_attempted=false
 
 restore_legacy_portal() {
+  local legacy_status files_restored=true
+
   printf 'Restoring the previously running portal container %s from Compose project %s.\n' \
     "$legacy_container_id" "$legacy_project_label" >&2
-  "${compose_cmd[@]}" "${staged_compose_options[@]}" down --remove-orphans >/dev/null 2>&1 || true
+  if ! "${compose_cmd[@]}" "${staged_compose_options[@]}" down --remove-orphans >/dev/null; then
+    printf '%s\n' "Could not remove the failed Mini PC release; the previous portal remains stopped to avoid a port conflict. Manual recovery is required." >&2
+    return 1
+  fi
+
   if [[ "$have_previous_env" == true && "$have_previous_compose" == true ]]; then
-    cp -- "$rollback_env_file" "$env_file"
-    cp -- "$rollback_compose_file" "$compose_file"
+    if ! cp -- "$rollback_env_file" "$env_file" || ! cp -- "$rollback_compose_file" "$compose_file"; then
+      printf '%s\n' "Could not restore the prior Mini PC release files; the previous portal will still be restarted if possible." >&2
+      files_restored=false
+    fi
   else
-    rm -f -- "$compose_file" "$env_file"
+    if ! rm -f -- "$compose_file" "$env_file"; then
+      printf '%s\n' "Could not remove the failed Mini PC release files; the previous portal will still be restarted if possible." >&2
+      files_restored=false
+    fi
   fi
-  if docker start "$legacy_container_id" >/dev/null; then
-    legacy_stopped=false
-  else
+
+  if ! legacy_status="$(docker inspect --format '{{.State.Status}}' "$legacy_container_id")"; then
+    printf 'Could not inspect previous portal container %s; manual recovery is required.\n' "$legacy_container_id" >&2
+    return 1
+  fi
+  if [[ "$legacy_status" != "running" ]] && ! docker start "$legacy_container_id" >/dev/null; then
     printf 'Could not restart previous portal container %s; manual recovery is required.\n' "$legacy_container_id" >&2
+    return 1
   fi
+
+  legacy_stopped=false
+  if ! wait_for_dashboard_health; then
+    printf 'Previous portal container %s did not pass its /healthz check; manual recovery is required.\n' \
+      "$legacy_container_id" >&2
+    return 1
+  fi
+
+  [[ "$files_restored" == true ]]
 }
 
 cleanup() {
   local status=$?
   set +e
-  if [[ "$legacy_stopped" == true && "$deployment_complete" != true ]]; then
-    restore_legacy_portal
-    status=1
+  if [[ "$deployment_mutation_started" == true && "$deployment_complete" != true && "$rollback_attempted" != true ]]; then
+    printf '%s\n' "Deployment ended before completion; attempting rollback." >&2
+    if ! restore_previous_release; then
+      status=1
+    fi
   fi
   docker --config "$docker_config_dir" logout "$container_registry" >/dev/null 2>&1
   rm -rf -- "$docker_config_dir"
@@ -257,22 +296,38 @@ cleanup() {
 }
 
 restore_previous_release() {
-  if [[ "$legacy_stopped" == true ]]; then
+  rollback_attempted=true
+
+  if [[ -n "$legacy_container_id" ]]; then
     restore_legacy_portal
     return
   fi
 
   printf '%s\n' "The Mini PC dashboard release did not pass health checks; restoring its previous release."
   if [[ "$have_previous_env" == true && "$have_previous_compose" == true ]]; then
-    cp -- "$rollback_env_file" "$env_file"
-    cp -- "$rollback_compose_file" "$compose_file"
-    if ! "${compose_cmd[@]}" "${compose_options[@]}" --env-file "$env_file" up --detach --wait --wait-timeout 90 dashboard; then
+    if ! cp -- "$rollback_env_file" "$env_file" || ! cp -- "$rollback_compose_file" "$compose_file"; then
+      printf '%s\n' "Could not restore the previous Mini PC release files; the rollback snapshots remain available for manual recovery." >&2
+      return 1
+    fi
+    if ! "${compose_cmd[@]}" "${compose_options[@]}" --env-file "$env_file" up --detach --force-recreate dashboard; then
       printf '%s\n' "Automatic restoration failed. The previous image and configuration remain in the Mini PC deployment directory." >&2
+      return 1
+    elif ! wait_for_dashboard_health; then
+      printf '%s\n' "The previous release was restarted but did not pass its /healthz check; manual recovery is required." >&2
+      return 1
     fi
   else
-    "${compose_cmd[@]}" "${compose_options[@]}" --env-file "$env_file" down --remove-orphans || true
-    rm -f -- "$env_file" "$compose_file"
+    if ! "${compose_cmd[@]}" "${staged_compose_options[@]}" down --remove-orphans >/dev/null; then
+      printf '%s\n' "Could not remove the failed first release; its Compose files are retained for manual recovery." >&2
+      return 1
+    fi
+    if ! rm -f -- "$env_file" "$compose_file"; then
+      printf '%s\n' "The failed first release was stopped, but its Compose files could not be removed." >&2
+      return 1
+    fi
   fi
+
+  return 0
 }
 
 trap cleanup EXIT
@@ -324,25 +379,27 @@ until "${compose_cmd[@]}" "${staged_compose_options[@]}" pull dashboard; do
 done
 
 if [[ -n "$legacy_container_id" ]]; then
+  deployment_mutation_started=true
+  legacy_stopped=true
   if ! docker stop --time 30 "$legacy_container_id" >/dev/null; then
     printf 'Could not stop the verified legacy portal container %s; the running portal was not replaced.\n' \
       "$legacy_container_id" >&2
     exit 1
   fi
-  legacy_stopped=true
+else
+  deployment_mutation_started=true
 fi
 
 cp -- "$new_compose_file" "$compose_file"
 cp -- "$new_env_file" "$env_file"
 
-if ! "${compose_cmd[@]}" "${compose_options[@]}" --env-file "$env_file" up --detach --wait --wait-timeout 90 --force-recreate dashboard; then
-  restore_previous_release
+if ! "${compose_cmd[@]}" "${compose_options[@]}" --env-file "$env_file" up --detach --force-recreate dashboard; then
+  restore_previous_release || true
   exit 1
 fi
 
-if ! curl --fail --silent --show-error --retry 5 --retry-delay 2 --max-time 10 \
-  "$dashboard_url/healthz" >/dev/null; then
-  restore_previous_release
+if ! wait_for_dashboard_health; then
+  restore_previous_release || true
   exit 1
 fi
 
@@ -350,7 +407,7 @@ api_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_
   "$dashboard_url/api/auth/me" || true)"
 if [[ "$api_status" != "200" && "$api_status" != "401" ]]; then
   printf 'The Mini PC dashboard API proxy check returned HTTP %s.\n' "$api_status" >&2
-  restore_previous_release
+  restore_previous_release || true
   exit 1
 fi
 
