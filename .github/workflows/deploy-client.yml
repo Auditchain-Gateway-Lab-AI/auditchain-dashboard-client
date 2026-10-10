@@ -1,4 +1,4 @@
-name: Deploy AuditChain Client to Besu DEV
+name: Deploy AuditChain Client to Mini PC
 
 on:
   push:
@@ -8,18 +8,17 @@ permissions:
   contents: read
 
 concurrency:
-  group: auditchain-client-development-deploy
+  group: auditchain-client-minipc-deploy
   cancel-in-progress: false
 
 jobs:
   validate:
-    name: Validate automatic DEV release
+    name: Validate automatic Mini PC release
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       image_sha: ${{ steps.release.outputs.image_sha }}
-      image_name: ${{ steps.release.outputs.image_name }}
 
     steps:
       - name: Check out pushed commit
@@ -42,10 +41,8 @@ jobs:
             fi
           done
 
-          image_name="ghcr.io/${GITHUB_REPOSITORY,,}-client"
           echo "image_sha=$selected_sha" >> "$GITHUB_OUTPUT"
-          echo "image_name=$image_name" >> "$GITHUB_OUTPUT"
-          echo "Validated automatic DEV deployment of $image_name:$selected_sha."
+          echo "Validated automatic Mini PC deployment for source commit $selected_sha."
 
   ci:
     name: Run client CI before deployment
@@ -58,8 +55,10 @@ jobs:
     needs: [validate, ci]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    environment: development
     outputs:
       image_digest: ${{ steps.build.outputs.digest }}
+      image_name: ${{ steps.config.outputs.image_name }}
     permissions:
       contents: read
       packages: write
@@ -70,16 +69,35 @@ jobs:
         with:
           ref: ${{ needs.validate.outputs.image_sha }}
 
+      - name: Validate deployment variables before publishing
+        id: config
+        env:
+          MINIPC_TAILSCALE_IP: ${{ vars.MINIPC_TAILSCALE_IP }}
+          MINIPC_CLIENT_PORT: ${{ vars.MINIPC_CLIENT_PORT }}
+          MINIPC_CLIENT_URL: ${{ vars.MINIPC_CLIENT_URL }}
+          MINIPC_GATEWAY_API_URL: ${{ vars.MINIPC_GATEWAY_API_URL }}
+          MINIPC_LEGACY_COMPOSE_DIR: ${{ vars.MINIPC_LEGACY_COMPOSE_DIR }}
+          BESU_ADMIN_PORTAL_URL: ${{ vars.BESU_ADMIN_PORTAL_URL }}
+          CONTAINER_REGISTRY: ${{ vars.CONTAINER_REGISTRY }}
+          CLIENT_CONTAINER_PORT: ${{ vars.CLIENT_CONTAINER_PORT }}
+          MINIPC_SSH_USERNAME: ${{ vars.MINIPC_SSH_USERNAME }}
+          MINIPC_SSH_PORT: ${{ vars.MINIPC_SSH_PORT }}
+        run: |
+          set -euo pipefail
+          bash client-app/scripts/validate-deployment-config.sh deploy
+          image_name="${CONTAINER_REGISTRY}/${GITHUB_REPOSITORY,,}-client"
+          echo "image_name=$image_name" >> "$GITHUB_OUTPUT"
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Log in to GitHub Container Registry
+      - name: Log in to configured container registry
         uses: docker/login-action@v4
         with:
-          registry: ghcr.io
+          registry: ${{ vars.CONTAINER_REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
@@ -91,23 +109,24 @@ jobs:
           file: client-app/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ needs.validate.outputs.image_name }}:${{ needs.validate.outputs.image_sha }}
+          tags: ${{ steps.config.outputs.image_name }}:${{ needs.validate.outputs.image_sha }}
           build-args: |
             VITE_API_BASE_URL=/api
-            VITE_GATEWAY_PORTAL_URL=http://100.125.142.44:3001
+            VITE_GATEWAY_PORTAL_URL=${{ vars.BESU_ADMIN_PORTAL_URL }}
+            CLIENT_CONTAINER_PORT=${{ vars.CLIENT_CONTAINER_PORT }}
           labels: |
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ needs.validate.outputs.image_sha }}
 
   deploy:
-    name: Deploy to Besu development server
+    name: Deploy to Mini PC
     needs: [validate, publish]
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     environment:
       name: development
-      url: http://100.125.142.44:3002
+      url: ${{ vars.MINIPC_CLIENT_URL }}
     permissions:
       contents: read
       packages: read
@@ -116,18 +135,29 @@ jobs:
       - name: Check out deployment configuration
         uses: actions/checkout@v7
 
-      - name: Check deployment credentials
+      - name: Validate required variables and secrets before remote access
         env:
+          MINIPC_TAILSCALE_IP: ${{ vars.MINIPC_TAILSCALE_IP }}
+          MINIPC_CLIENT_PORT: ${{ vars.MINIPC_CLIENT_PORT }}
+          MINIPC_CLIENT_URL: ${{ vars.MINIPC_CLIENT_URL }}
+          MINIPC_GATEWAY_API_URL: ${{ vars.MINIPC_GATEWAY_API_URL }}
+          MINIPC_LEGACY_COMPOSE_DIR: ${{ vars.MINIPC_LEGACY_COMPOSE_DIR }}
+          BESU_ADMIN_PORTAL_URL: ${{ vars.BESU_ADMIN_PORTAL_URL }}
+          CONTAINER_REGISTRY: ${{ vars.CONTAINER_REGISTRY }}
+          CLIENT_CONTAINER_PORT: ${{ vars.CLIENT_CONTAINER_PORT }}
+          MINIPC_SSH_USERNAME: ${{ vars.MINIPC_SSH_USERNAME }}
+          MINIPC_SSH_PORT: ${{ vars.MINIPC_SSH_PORT }}
           TS_AUTHKEY: ${{ secrets.TS_AUTHKEY }}
-          BESU_SSH_PASSWORD: ${{ secrets.BESU_SSH_PASSWORD }}
-          BESU_SSH_HOST_FINGERPRINT: ${{ secrets.BESU_SSH_HOST_FINGERPRINT }}
-          GHCR_READ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GHCR_USERNAME: ${{ github.actor }}
+          MINIPC_SSH_PASSWORD: ${{ secrets.MINIPC_SSH_PASSWORD }}
+          MINIPC_SSH_HOST_FINGERPRINT: ${{ secrets.MINIPC_SSH_HOST_FINGERPRINT }}
+          REGISTRY_READ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_USERNAME: ${{ github.actor }}
         run: |
           set -euo pipefail
-          for name in TS_AUTHKEY BESU_SSH_PASSWORD BESU_SSH_HOST_FINGERPRINT GHCR_READ_TOKEN GHCR_USERNAME; do
+          bash client-app/scripts/validate-deployment-config.sh deploy
+          for name in TS_AUTHKEY MINIPC_SSH_PASSWORD MINIPC_SSH_HOST_FINGERPRINT REGISTRY_READ_TOKEN REGISTRY_USERNAME; do
             if [[ -z "${!name}" ]]; then
-              echo "Missing required development environment secret or variable: $name" >&2
+              echo "Missing required development environment secret or identity: $name" >&2
               exit 1
             fi
           done
@@ -136,7 +166,7 @@ jobs:
         uses: tailscale/github-action@v4
         with:
           authkey: ${{ secrets.TS_AUTHKEY }}
-          ping: 100.125.142.44
+          ping: ${{ vars.MINIPC_TAILSCALE_IP }}
 
       - name: Package deployment files
         env:
@@ -144,40 +174,48 @@ jobs:
         run: |
           set -euo pipefail
           tar -czf "$BUNDLE_NAME" \
-            -C "$GITHUB_WORKSPACE/client-app/deploy" compose.yaml \
-            -C "$GITHUB_WORKSPACE/client-app/scripts" deploy-to-besu.sh
+            -C "$GITHUB_WORKSPACE/client-app/deploy" compose-minipc.yaml \
+            -C "$GITHUB_WORKSPACE/client-app/scripts" deploy-to-minipc.sh
 
-      - name: Copy release configuration to Besu DEV
+      - name: Copy release configuration to Mini PC
         uses: appleboy/scp-action@v1
         with:
-          host: 100.125.142.44
-          username: ${{ vars.BESU_SSH_USERNAME || 'besu' }}
-          port: ${{ vars.BESU_SSH_PORT || '22' }}
-          password: ${{ secrets.BESU_SSH_PASSWORD }}
-          fingerprint: ${{ secrets.BESU_SSH_HOST_FINGERPRINT }}
+          host: ${{ vars.MINIPC_TAILSCALE_IP }}
+          username: ${{ vars.MINIPC_SSH_USERNAME }}
+          port: ${{ vars.MINIPC_SSH_PORT }}
+          password: ${{ secrets.MINIPC_SSH_PASSWORD }}
+          fingerprint: ${{ secrets.MINIPC_SSH_HOST_FINGERPRINT }}
           source: client-deploy-${{ github.run_id }}-${{ github.run_attempt }}.tar.gz
           target: /tmp/
           timeout: 60s
           command_timeout: 2m
 
-      - name: Deploy and verify dashboard on Besu DEV
+      - name: Deploy and verify dashboard on Mini PC
         uses: appleboy/ssh-action@v1
         env:
           BUNDLE_NAME: client-deploy-${{ github.run_id }}-${{ github.run_attempt }}.tar.gz
-          GHCR_READ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GHCR_USERNAME: ${{ github.actor }}
-          CLIENT_IMAGE_NAME: ${{ needs.validate.outputs.image_name }}
+          REGISTRY_READ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_USERNAME: ${{ github.actor }}
+          CONTAINER_REGISTRY: ${{ vars.CONTAINER_REGISTRY }}
+          MINIPC_TAILSCALE_IP: ${{ vars.MINIPC_TAILSCALE_IP }}
+          MINIPC_CLIENT_PORT: ${{ vars.MINIPC_CLIENT_PORT }}
+          MINIPC_CLIENT_URL: ${{ vars.MINIPC_CLIENT_URL }}
+          MINIPC_GATEWAY_API_URL: ${{ vars.MINIPC_GATEWAY_API_URL }}
+          MINIPC_LEGACY_COMPOSE_DIR: ${{ vars.MINIPC_LEGACY_COMPOSE_DIR }}
+          BESU_ADMIN_PORTAL_URL: ${{ vars.BESU_ADMIN_PORTAL_URL }}
+          CLIENT_CONTAINER_PORT: ${{ vars.CLIENT_CONTAINER_PORT }}
+          CLIENT_IMAGE_NAME: ${{ needs.publish.outputs.image_name }}
           CLIENT_IMAGE_SHA: ${{ needs.validate.outputs.image_sha }}
           CLIENT_IMAGE_DIGEST: ${{ needs.publish.outputs.image_digest }}
-          CLIENT_IMAGE_REF: ${{ needs.validate.outputs.image_name }}@${{ needs.publish.outputs.image_digest }}
+          CLIENT_IMAGE_REF: ${{ needs.publish.outputs.image_name }}@${{ needs.publish.outputs.image_digest }}
           GITHUB_RUN_ID: ${{ github.run_id }}
         with:
-          host: 100.125.142.44
-          username: ${{ vars.BESU_SSH_USERNAME || 'besu' }}
-          port: ${{ vars.BESU_SSH_PORT || '22' }}
-          password: ${{ secrets.BESU_SSH_PASSWORD }}
-          fingerprint: ${{ secrets.BESU_SSH_HOST_FINGERPRINT }}
-          envs: BUNDLE_NAME,GHCR_READ_TOKEN,GHCR_USERNAME,CLIENT_IMAGE_NAME,CLIENT_IMAGE_SHA,CLIENT_IMAGE_DIGEST,CLIENT_IMAGE_REF,GITHUB_RUN_ID
+          host: ${{ vars.MINIPC_TAILSCALE_IP }}
+          username: ${{ vars.MINIPC_SSH_USERNAME }}
+          port: ${{ vars.MINIPC_SSH_PORT }}
+          password: ${{ secrets.MINIPC_SSH_PASSWORD }}
+          fingerprint: ${{ secrets.MINIPC_SSH_HOST_FINGERPRINT }}
+          envs: BUNDLE_NAME,REGISTRY_READ_TOKEN,REGISTRY_USERNAME,CONTAINER_REGISTRY,MINIPC_TAILSCALE_IP,MINIPC_CLIENT_PORT,MINIPC_CLIENT_URL,MINIPC_GATEWAY_API_URL,MINIPC_LEGACY_COMPOSE_DIR,BESU_ADMIN_PORTAL_URL,CLIENT_CONTAINER_PORT,CLIENT_IMAGE_NAME,CLIENT_IMAGE_SHA,CLIENT_IMAGE_DIGEST,CLIENT_IMAGE_REF,GITHUB_RUN_ID
           command_timeout: 15m
           script: |
             set -eu
@@ -194,28 +232,26 @@ jobs:
             tar -xzf "$bundle_path" -C "$package_dir"
 
             export DEPLOY_PACKAGE_DIR="$package_dir"
-            export DASHBOARD_PROJECT_DIR=/home/besu/auditchain/auditchain-dashboard-client
-            export DASHBOARD_URL=http://100.125.142.44:3002
-            export DASHBOARD_BIND_ADDRESS=100.125.142.44
-            export DASHBOARD_PORT=3002
-            export AUDITCHAIN_API_UPSTREAM=http://host.docker.internal:8080
+            export DASHBOARD_PROJECT_DIR="${HOME}/auditchain/client-portal"
+            export MINIPC_TAILSCALE_IP MINIPC_CLIENT_PORT MINIPC_CLIENT_URL MINIPC_GATEWAY_API_URL MINIPC_LEGACY_COMPOSE_DIR
+            export BESU_ADMIN_PORTAL_URL CLIENT_CONTAINER_PORT CONTAINER_REGISTRY
             export CLIENT_IMAGE_NAME CLIENT_IMAGE_SHA CLIENT_IMAGE_DIGEST CLIENT_IMAGE_REF
-            export GHCR_USERNAME GHCR_READ_TOKEN
-            export GITHUB_RUN_ID
-            bash "$package_dir/deploy-to-besu.sh"
+            export REGISTRY_USERNAME REGISTRY_READ_TOKEN GITHUB_RUN_ID
+            bash "$package_dir/deploy-to-minipc.sh"
 
       - name: Record deployed release
         env:
-          CLIENT_IMAGE_NAME: ${{ needs.validate.outputs.image_name }}
+          MINIPC_CLIENT_URL: ${{ vars.MINIPC_CLIENT_URL }}
+          CLIENT_IMAGE_NAME: ${{ needs.publish.outputs.image_name }}
           CLIENT_IMAGE_SHA: ${{ needs.validate.outputs.image_sha }}
           CLIENT_IMAGE_DIGEST: ${{ needs.publish.outputs.image_digest }}
         run: |
           {
-            echo "### AuditChain Client DEV deployment"
+            echo "### AuditChain Client Mini PC deployment"
             echo
             echo "- Result: successful; the remote script passed dashboard health and Gateway API connectivity checks."
             echo "- Image: \`$CLIENT_IMAGE_NAME@$CLIENT_IMAGE_DIGEST\` (source commit \`$CLIENT_IMAGE_SHA\`)"
-            echo "- Dashboard: http://100.125.142.44:3002"
+            echo "- Dashboard: $MINIPC_CLIENT_URL"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove local deployment bundle

@@ -1,0 +1,23 @@
+x-minipc-deployment-settings:
+  client_url: ${MINIPC_CLIENT_URL:?MINIPC_CLIENT_URL is required}
+  gateway_api_url: ${MINIPC_GATEWAY_API_URL:?MINIPC_GATEWAY_API_URL is required}
+  besu_admin_portal_url: ${BESU_ADMIN_PORTAL_URL:?BESU_ADMIN_PORTAL_URL is required}
+  container_registry: ${CONTAINER_REGISTRY:?CONTAINER_REGISTRY is required}
+
+services:
+  dashboard:
+    image: ${CLIENT_IMAGE:?CLIENT_IMAGE must name the published image digest}
+    container_name: auditchain-client-portal-minipc
+    restart: unless-stopped
+    ports:
+      - "${MINIPC_TAILSCALE_IP:?MINIPC_TAILSCALE_IP is required}:${MINIPC_CLIENT_PORT:?MINIPC_CLIENT_PORT is required}:${CLIENT_CONTAINER_PORT:?CLIENT_CONTAINER_PORT is required}"
+    environment:
+      AUDITCHAIN_API_UPSTREAM: ${MINIPC_GATEWAY_API_URL:?MINIPC_GATEWAY_API_URL is required}
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m,mode=1777
+      - /etc/nginx/conf.d:rw,noexec,nosuid,nodev,size=1m,uid=101,gid=101,mode=755

@@ -5,15 +5,25 @@ umask 077
 
 readonly expected_deploy_dir="/home/besu/auditchain/auditchain-dashboard-client"
 readonly deploy_dir="${DASHBOARD_PROJECT_DIR:?DASHBOARD_PROJECT_DIR is required}"
-readonly dashboard_url="${DASHBOARD_URL:-http://100.125.142.44:3002}"
-readonly dashboard_bind_address="${DASHBOARD_BIND_ADDRESS:-100.125.142.44}"
-readonly dashboard_port="${DASHBOARD_PORT:-3002}"
-readonly api_upstream="${AUDITCHAIN_API_UPSTREAM:-http://host.docker.internal:8080}"
+readonly dashboard_bind_address="${BESU_TAILSCALE_IP:?BESU_TAILSCALE_IP is required}"
+readonly dashboard_port="${BESU_CLIENT_PORT:?BESU_CLIENT_PORT is required}"
+readonly dashboard_url="${BESU_CLIENT_URL:?BESU_CLIENT_URL is required}"
+readonly api_upstream="${BESU_GATEWAY_API_URL:?BESU_GATEWAY_API_URL is required}"
+readonly admin_portal_url="${BESU_ADMIN_PORTAL_URL:?BESU_ADMIN_PORTAL_URL is required}"
+readonly client_container_port="${CLIENT_CONTAINER_PORT:?CLIENT_CONTAINER_PORT is required}"
+readonly container_registry="${CONTAINER_REGISTRY:?CONTAINER_REGISTRY is required}"
 readonly image_name="${CLIENT_IMAGE_NAME:?CLIENT_IMAGE_NAME is required}"
 readonly image_sha="${CLIENT_IMAGE_SHA:?CLIENT_IMAGE_SHA is required}"
 readonly image_digest="${CLIENT_IMAGE_DIGEST:?CLIENT_IMAGE_DIGEST is required}"
 readonly image_ref="${CLIENT_IMAGE_REF:?CLIENT_IMAGE_REF is required}"
-readonly ghcr_username="${GHCR_USERNAME:?GHCR_USERNAME is required}"
+readonly registry_username="${REGISTRY_USERNAME:?REGISTRY_USERNAME is required}"
+
+validate_port() {
+  local value="$1"
+  [[ "$value" =~ ^[0-9]{1,5}$ ]] || return 1
+  local number=$((10#$value))
+  (( number >= 1 && number <= 65535 ))
+}
 
 compose_cmd=(docker compose)
 if ! "${compose_cmd[@]}" version >/dev/null 2>&1; then
@@ -40,19 +50,30 @@ if [[ "$deploy_dir" != "$expected_deploy_dir" ]]; then
   exit 1
 fi
 
-if [[ ! "$image_name" =~ ^ghcr\.io/[a-z0-9._/-]+$ || ! "$image_sha" =~ ^[0-9a-f]{40}$ || \
+if [[ "$image_name" != "$container_registry/"* || ! "$image_name" =~ ^[A-Za-z0-9.-]+(:[0-9]{1,5})?/[a-z0-9._/-]+$ || \
+  ! "$image_sha" =~ ^[0-9a-f]{40}$ || \
   ! "$image_digest" =~ ^sha256:[0-9a-f]{64}$ || "$image_ref" != "$image_name@$image_digest" ]]; then
   printf '%s\n' "The requested image name, commit SHA, or published image digest is invalid." >&2
   exit 1
 fi
 
-if [[ ! "$dashboard_port" =~ ^[0-9]{1,5}$ ]] || (( dashboard_port < 1 || dashboard_port > 65535 )); then
+if ! validate_port "$dashboard_port" || ! validate_port "$client_container_port" || \
+  (( 10#$client_container_port < 1024 )); then
   printf '%s\n' "The dashboard port is invalid." >&2
   exit 1
 fi
 
-if [[ "$dashboard_bind_address" != "100.125.142.44" || "$api_upstream" != "http://host.docker.internal:8080" ]]; then
-  printf '%s\n' "The dashboard bind address or Gateway upstream differs from the reviewed DEV target." >&2
+if [[ ! "$dashboard_bind_address" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ || \
+  "$dashboard_url" != "http://${dashboard_bind_address}:${dashboard_port}" || \
+  ! "$api_upstream" =~ ^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ || \
+  ! "$admin_portal_url" =~ ^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[^[:space:]]*)?$ ]]; then
+  printf '%s\n' "The Besu client URL, Gateway API URL, or admin portal URL is invalid or inconsistent." >&2
+  exit 1
+fi
+
+if [[ ! "$container_registry" =~ ^[A-Za-z0-9.-]+(:[0-9]{1,5})?$ || \
+  ! "$registry_username" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  printf '%s\n' "The configured image registry or registry username is invalid." >&2
   exit 1
 fi
 
@@ -61,12 +82,7 @@ if [[ ! -d "${DEPLOY_PACKAGE_DIR:-}" || ! -f "${DEPLOY_PACKAGE_DIR:-}/compose.ya
   exit 1
 fi
 
-if [[ ! "$dashboard_url" =~ ^http://100\.125\.142\.44:3002$ ]]; then
-  printf '%s\n' "The dashboard URL differs from the reviewed DEV endpoint." >&2
-  exit 1
-fi
-
-: "${GHCR_READ_TOKEN:?GHCR_READ_TOKEN is required}"
+: "${REGISTRY_READ_TOKEN:?REGISTRY_READ_TOKEN is required}"
 : "${GITHUB_RUN_ID:?GITHUB_RUN_ID is required}"
 
 mkdir -p -- "$deploy_dir"
@@ -89,7 +105,7 @@ have_previous_compose=false
 cleanup() {
   local status=$?
   set +e
-  docker --config "$docker_config_dir" logout ghcr.io >/dev/null 2>&1
+  docker --config "$docker_config_dir" logout "$container_registry" >/dev/null 2>&1
   rm -rf -- "$docker_config_dir"
   rm -f -- "$new_env_file" "$new_compose_file" "$rollback_env_file" "$rollback_compose_file"
   exit "$status"
@@ -113,7 +129,7 @@ restore_previous_release() {
 trap cleanup EXIT
 
 gateway_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 10 \
-  "http://100.125.142.44:8080/api/auth/me" || true)"
+  "${api_upstream%/}/api/auth/me" || true)"
 if [[ "$gateway_status" != "200" && "$gateway_status" != "401" ]]; then
   printf 'The Gateway API preflight returned HTTP %s.\n' "$gateway_status" >&2
   exit 1
@@ -130,8 +146,9 @@ elif [[ -e "$env_file" || -e "$compose_file" ]]; then
 fi
 
 cp -- "$DEPLOY_PACKAGE_DIR/compose.yaml" "$new_compose_file"
-printf 'CLIENT_IMAGE=%s\nDASHBOARD_BIND_ADDRESS=%s\nDASHBOARD_PORT=%s\nAUDITCHAIN_API_UPSTREAM=%s\n' \
-  "$image_ref" "$dashboard_bind_address" "$dashboard_port" "$api_upstream" > "$new_env_file"
+printf 'CLIENT_IMAGE=%s\nBESU_TAILSCALE_IP=%s\nBESU_CLIENT_PORT=%s\nBESU_CLIENT_URL=%s\nBESU_GATEWAY_API_URL=%s\nBESU_ADMIN_PORTAL_URL=%s\nCLIENT_CONTAINER_PORT=%s\nCONTAINER_REGISTRY=%s\n' \
+  "$image_ref" "$dashboard_bind_address" "$dashboard_port" "$dashboard_url" "$api_upstream" \
+  "$admin_portal_url" "$client_container_port" "$container_registry" > "$new_env_file"
 
 readonly staged_compose_options=(--project-name "$project_name" --project-directory "$deploy_dir" --file "$new_compose_file" --env-file "$new_env_file")
 
@@ -140,14 +157,14 @@ if ! "${compose_cmd[@]}" "${staged_compose_options[@]}" config --quiet; then
   exit 1
 fi
 
-printf '%s' "$GHCR_READ_TOKEN" | docker login ghcr.io --username "$ghcr_username" --password-stdin
-unset GHCR_READ_TOKEN
+printf '%s' "$REGISTRY_READ_TOKEN" | docker login "$container_registry" --username "$registry_username" --password-stdin
+unset REGISTRY_READ_TOKEN
 
 pull_attempt=1
 max_pull_attempts=3
 until "${compose_cmd[@]}" "${staged_compose_options[@]}" pull dashboard; do
   if (( pull_attempt >= max_pull_attempts )); then
-    printf 'GHCR image pull failed after %s attempts; the running dashboard was not changed.\n' \
+    printf 'Image pull failed after %s attempts; the running dashboard was not changed.\n' \
       "$max_pull_attempts" >&2
     exit 1
   fi
