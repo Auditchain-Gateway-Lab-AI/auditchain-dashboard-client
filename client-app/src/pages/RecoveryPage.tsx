@@ -10,6 +10,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useRecoveryData, useRecoveryRefresh } from "@/hooks/useRecovery";
 import { recoveryErrorMessage } from "@/services/recovery/api-recovery.service";
 import type { RecoveryEventPage } from "@/types/recovery";
+import { RecoveryDemo } from "@/components/recovery/RecoveryDemo";
+
+// Recovery is currently a frontend prototype. Keep the API page available for later integration.
+export function RecoveryPage() { return <RecoveryDemo />; }
 
 type RecoveryTab = "incidents" | "history";
 const tabs: Array<{ id: RecoveryTab; label: string; icon: typeof Database }> = [
@@ -19,7 +23,7 @@ const tabs: Array<{ id: RecoveryTab; label: string; icon: typeof Database }> = [
 const EMPTY_HISTORY: RecoveryEventPage = { data: [], page: 1, page_size: 100, total_items: 0, total_pages: 0 };
 const ACTIVE_STATUSES = new Set(["PENDING_EXECUTION", "EXECUTING", "APPLIED_AWAITING_CDC"]);
 
-export function RecoveryPage() {
+export function LiveRecoveryPage() {
   const [tab, setTab] = useState<RecoveryTab>("incidents");
   const [drawerIds, setDrawerIds] = useState<string[] | null>(null);
   const recovery = useRecoveryData();

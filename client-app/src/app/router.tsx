@@ -39,6 +39,8 @@ function LazyPage({ children }: { children: ReactNode }) {
 export const router = createBrowserRouter([
   { path: "/", element: <RootRedirect /> },
   { path: "/login", element: <LazyPage><LoginPage /></LazyPage> },
+  // Public prototype route contains sample data only and does not call recovery APIs.
+  { path: "/recovery-demo", element: <LazyPage><RecoveryPage /></LazyPage> },
   {
     element: <ProtectedRoute />,
     children: [{
