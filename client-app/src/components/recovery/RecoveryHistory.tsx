@@ -1,26 +1,45 @@
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
+import { Search, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/panel-state";
+import { Button } from "@/components/ui/button";
 import type { RecoveryEvent, RecoveryEventPage } from "@/types/recovery";
 
-export function RecoveryHistory({ data }: { data: RecoveryEventPage }) {
+type HistoryFilter = "ALL" | "SUCCEEDED" | "NEEDS_REVIEW";
+
+export function RecoveryHistory({ data, filter, onFilterChange }: { data: RecoveryEventPage; filter: HistoryFilter; onFilterChange: (value: HistoryFilter) => void }) {
   const [selected, setSelected] = useState<RecoveryEvent | null>(null);
+  const [query, setQuery] = useState("");
   const events = data.data || [];
+  const filteredEvents = useMemo(() => events.filter((event) => {
+    const isFailed = event.result_status.startsWith("FAILED") || event.result_status === "APPLIED_CDC_TIMEOUT";
+    const statusMatches = filter === "ALL" || (filter === "SUCCEEDED" && event.result_status === "SUCCEEDED") || (filter === "NEEDS_REVIEW" && isFailed);
+    const text = `${event.id} ${event.incident_id || ""} ${event.target_log_id || ""} ${event.selected_log_id || ""} ${event.resource} ${event.operation || ""} ${event.result_status}`.toLowerCase();
+    return statusMatches && text.includes(query.trim().toLowerCase());
+  }), [events, filter, query]);
+  const failedCount = events.filter((event) => event.result_status.startsWith("FAILED") || event.result_status === "APPLIED_CDC_TIMEOUT").length;
 
   return (
     <div className="space-y-3">
+      <section className="flex flex-wrap gap-2 rounded-lg border border-line bg-panel p-3" aria-label="Recovery history filters">
+        <label className="flex min-w-56 flex-1 items-center gap-2 rounded-lg border border-line-strong bg-ground px-3"><Search className="size-4 text-ink-faint" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search event, log, resource, operation..." className="h-9 w-full bg-transparent text-xs text-ink outline-none placeholder:text-ink-faint" aria-label="Search recovery history" /></label>
+        <div className="flex flex-wrap items-center gap-1 rounded-lg border border-line bg-ground p-1">
+          {([ ["ALL", "All results", events.length], ["SUCCEEDED", "Recovered", events.filter((event) => event.result_status === "SUCCEEDED").length], ["NEEDS_REVIEW", "Needs review", failedCount] ] as const).map(([value, label, count]) => <button key={value} type="button" aria-pressed={filter === value} onClick={() => onFilterChange(value)} className={`rounded-md px-2.5 py-1.5 text-[10px] font-semibold ${filter === value ? "bg-navy-bright/25 text-ink" : "text-ink-dim hover:bg-elevated"}`}>{label}<span className="ml-1.5 font-mono text-ink-faint">{count}</span></button>)}
+        </div>
+        {(query || filter !== "ALL") && <Button variant="ghost" size="sm" onClick={() => { setQuery(""); onFilterChange("ALL"); }}><X className="size-3" /> Clear filters</Button>}
+      </section>
       <Card className="overflow-hidden">
         <CardHeader>
           <div>
             <CardTitle>Recovery history</CardTitle>
             <p className="mt-1 text-[10px] text-ink-faint">Execution evidence is recorded in the recovery event ledger.</p>
           </div>
-          <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-ink-faint">{data.total_items || events.length} events</span>
+          <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-ink-faint">{filteredEvents.length} shown · {data.total_items} events total</span>
         </CardHeader>
         <CardContent className="p-0">
-          {events.length === 0 ? <EmptyState message="No recovery events have been recorded for this workspace." /> : (
+          {filteredEvents.length === 0 ? <EmptyState message={events.length === 0 ? "No recovery events have been recorded for this workspace." : "No recovery events match these filters."} /> : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[900px] border-collapse text-xs">
                 <thead>
@@ -29,7 +48,7 @@ export function RecoveryHistory({ data }: { data: RecoveryEventPage }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {events.map((event) => (
+                  {filteredEvents.map((event) => (
                     <tr key={event.id} className="cursor-pointer border-t border-line hover:bg-elevated/70" onClick={() => setSelected(event)} onKeyDown={(keyEvent) => { if (keyEvent.key === "Enter") setSelected(event); }} tabIndex={0}>
                       <Cell><code className="font-mono font-semibold text-ink">{event.target_log_id || event.selected_log_id || "Unknown target"}</code><small className="mt-1 block text-ink-faint">{event.resource} · {event.id}</small></Cell>
                       <Cell>{event.operation || "—"}</Cell>

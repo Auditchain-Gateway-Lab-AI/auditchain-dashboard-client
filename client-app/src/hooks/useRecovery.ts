@@ -2,10 +2,15 @@ import { useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useAuth } from "@/hooks/useAuth";
+import { ApiError } from "@/services/api/client";
 import { recoveryService } from "@/services/recovery";
 
 const activeRequestStatuses = new Set(["PENDING_EXECUTION", "EXECUTING", "APPLIED_AWAITING_CDC"]);
 const recoveryPollMs = 4_000;
+const retryRecoveryQuery = (failureCount: number, error: unknown) => {
+  if (error instanceof ApiError && error.status >= 400 && error.status < 500) return false;
+  return failureCount < 2;
+};
 
 export const recoveryKeys = {
   all: (workspaceId?: string) => ["recovery", workspaceId || "no-workspace"] as const,
@@ -22,31 +27,40 @@ export function useRecoveryData() {
     queryKey: recoveryKeys.requests(workspaceId),
     queryFn: () => recoveryService.getRequests(token),
     enabled: Boolean(token),
+    retry: retryRecoveryQuery,
     refetchInterval: (query) => query.state.data?.some((request) =>
       activeRequestStatuses.has(String(request.status).toUpperCase()),
     ) ? recoveryPollMs : false,
-    refetchOnWindowFocus: true,
-    refetchOnReconnect: true,
+    refetchOnWindowFocus: (query) => !query.state.error,
+    refetchOnReconnect: (query) => !query.state.error,
   });
   const incidents = useQuery({
     queryKey: recoveryKeys.incidents(workspaceId),
     queryFn: () => recoveryService.getIncidents(token),
     enabled: Boolean(token),
-    refetchInterval: requests.data?.some((request) =>
-      activeRequestStatuses.has(String(request.status).toUpperCase()),
-    ) ? recoveryPollMs : 30_000,
-    refetchOnWindowFocus: true,
-    refetchOnReconnect: true,
+    retry: retryRecoveryQuery,
+    refetchInterval: (query) => {
+      if (query.state.error) return false;
+      return requests.data?.some((request) =>
+        activeRequestStatuses.has(String(request.status).toUpperCase()),
+      ) ? recoveryPollMs : 30_000;
+    },
+    refetchOnWindowFocus: (query) => !query.state.error,
+    refetchOnReconnect: (query) => !query.state.error,
   });
   const history = useQuery({
     queryKey: recoveryKeys.history(workspaceId),
     queryFn: () => recoveryService.getHistory(token),
     enabled: Boolean(token),
-    refetchInterval: requests.data?.some((request) =>
-      activeRequestStatuses.has(String(request.status).toUpperCase()),
-    ) ? recoveryPollMs : 30_000,
-    refetchOnWindowFocus: true,
-    refetchOnReconnect: true,
+    retry: retryRecoveryQuery,
+    refetchInterval: (query) => {
+      if (query.state.error) return false;
+      return requests.data?.some((request) =>
+        activeRequestStatuses.has(String(request.status).toUpperCase()),
+      ) ? recoveryPollMs : 30_000;
+    },
+    refetchOnWindowFocus: (query) => !query.state.error,
+    refetchOnReconnect: (query) => !query.state.error,
   });
 
   const queries = [incidents, requests, history];

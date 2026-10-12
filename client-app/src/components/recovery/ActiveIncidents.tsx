@@ -1,4 +1,4 @@
-import { LifeBuoy } from "lucide-react";
+import { LifeBuoy, Search, X } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -11,18 +11,50 @@ import type { RecoveryIncident, RecoveryRequest } from "@/types/recovery";
 interface ActiveIncidentsProps {
   data: RecoveryIncident[];
   requests: RecoveryRequest[];
+  filter: "ALL" | "OPEN" | "RESOLVED" | "ACTIVE_RECOVERY";
+  scope: "ALL" | "CLIENT_SOURCE" | "GATEWAY_INTEGRITY";
+  onFilterChange: (value: ActiveIncidentsProps["filter"]) => void;
+  onScopeChange: (value: ActiveIncidentsProps["scope"]) => void;
   onPrepare: (ids: string[]) => void;
 }
 
 const activeStatuses = new Set(["PENDING_EXECUTION", "EXECUTING", "APPLIED_AWAITING_CDC"]);
 const inProgressStatuses = new Set(["EXECUTING", "APPLIED_AWAITING_CDC"]);
 
-export function ActiveIncidents({ data, requests, onPrepare }: ActiveIncidentsProps) {
+export function ActiveIncidents({ data, requests, filter, scope, onFilterChange, onScopeChange, onPrepare }: ActiveIncidentsProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<"newest" | "oldest" | "resource">("newest");
   const requestByIncident = useMemo(() => latestRequestByIncident(requests), [requests]);
-  const selectable = data.filter((incident) => isActionableScope(incident) && incident.status === "OPEN");
+  const counts = useMemo(() => ({
+    all: data.length,
+    open: data.filter((incident) => incident.status === "OPEN").length,
+    resolved: data.filter((incident) => ["RESOLVED", "RECOVERED"].includes(String(incident.status).toUpperCase())).length,
+  }), [data]);
+  const filteredData = useMemo(() => data.filter((incident) => {
+    const status = String(incident.status).toUpperCase();
+    const requestStatus = String(requestByIncident.get(incident.id)?.status || "").toUpperCase();
+    const statusMatches = filter === "ALL"
+      || (filter === "OPEN" && status === "OPEN")
+      || (filter === "RESOLVED" && ["RESOLVED", "RECOVERED"].includes(status))
+      || (filter === "ACTIVE_RECOVERY" && activeStatuses.has(requestStatus));
+    const scopeMatches = scope === "ALL" || String(incident.incident_scope).toUpperCase() === scope;
+    const searchText = `${incident.id} ${incident.log_id} ${incident.reference_log_id || ""} ${incident.resource} ${incident.incident_type} ${incident.source_status || ""}`.toLowerCase();
+    return statusMatches && scopeMatches && searchText.includes(query.trim().toLowerCase());
+  }).sort((a, b) => sort === "resource"
+    ? a.resource.localeCompare(b.resource)
+    : sort === "oldest"
+      ? a.detected_at.localeCompare(b.detected_at)
+      : b.detected_at.localeCompare(a.detected_at)), [data, filter, scope, query, sort, requestByIncident]);
+  const selectable = filteredData.filter((incident) => {
+    const requestStatus = String(requestByIncident.get(incident.id)?.status || "").toUpperCase();
+    return isActionableScope(incident) && incident.status === "OPEN" && !inProgressStatuses.has(requestStatus);
+  });
   const allSelected = selectable.length > 0 && selectable.every((incident) => selected.has(incident.id));
-  const selectedIds = selectable.filter((incident) => selected.has(incident.id)).map((incident) => incident.id);
+  const selectedIds = data.filter((incident) => {
+    const requestStatus = String(requestByIncident.get(incident.id)?.status || "").toUpperCase();
+    return selected.has(incident.id) && isActionableScope(incident) && incident.status === "OPEN" && !inProgressStatuses.has(requestStatus);
+  }).map((incident) => incident.id);
 
   function toggleAll() {
     setSelected(allSelected ? new Set() : new Set(selectable.map((incident) => incident.id)));
@@ -39,6 +71,18 @@ export function ActiveIncidents({ data, requests, onPrepare }: ActiveIncidentsPr
 
   return (
     <div className="space-y-3">
+      <section className="space-y-3 rounded-lg border border-line bg-panel p-3" aria-label="Incident filters">
+        <div className="flex flex-wrap gap-2">
+          <label className="flex min-w-56 flex-1 items-center gap-2 rounded-lg border border-line-strong bg-ground px-3"><Search className="size-4 text-ink-faint" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search incident, log, resource, issue..." className="h-9 w-full bg-transparent text-xs text-ink outline-none placeholder:text-ink-faint" aria-label="Search recovery incidents" /></label>
+          <label className="flex items-center gap-2 rounded-lg border border-line bg-ground px-2.5 text-[10px] text-ink-faint"><span>Scope</span><select value={scope} onChange={(event) => onScopeChange(event.target.value as ActiveIncidentsProps["scope"])} className="h-9 bg-transparent text-xs text-ink outline-none"><option value="ALL">All scopes</option><option value="CLIENT_SOURCE">Client source</option><option value="GATEWAY_INTEGRITY">Gateway integrity</option></select></label>
+          <label className="flex items-center gap-2 rounded-lg border border-line bg-ground px-2.5 text-[10px] text-ink-faint"><span>Sort</span><select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)} className="h-9 bg-transparent text-xs text-ink outline-none"><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="resource">Resource A–Z</option></select></label>
+        </div>
+        <div className="flex flex-wrap items-center gap-1">
+          {([ ["ALL", "All incidents", counts.all], ["OPEN", "Open", counts.open], ["RESOLVED", "Recovered", counts.resolved], ["ACTIVE_RECOVERY", "Recovery in progress", requests.filter((request) => activeStatuses.has(String(request.status).toUpperCase())).length] ] as const).map(([value, label, count]) => <button key={value} type="button" aria-pressed={filter === value} onClick={() => onFilterChange(value)} className={`rounded-md px-2.5 py-1.5 text-[10px] font-semibold ${filter === value ? "bg-navy-bright/25 text-ink" : "text-ink-dim hover:bg-elevated"}`}>{label}<span className="ml-1.5 font-mono text-ink-faint">{count}</span></button>)}
+          {(query || filter !== "ALL" || scope !== "ALL" || sort !== "newest") && <Button variant="ghost" size="sm" onClick={() => { setQuery(""); setSort("newest"); onFilterChange("ALL"); onScopeChange("ALL"); }}><X className="size-3" /> Clear filters</Button>}
+        </div>
+      </section>
+
       {selectedIds.length > 0 && (
         <div className="flex flex-col gap-3 rounded-lg border border-line-strong bg-elevated px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-xs">
@@ -61,10 +105,10 @@ export function ActiveIncidents({ data, requests, onPrepare }: ActiveIncidentsPr
             <CardTitle>Recovery incidents</CardTitle>
             <p className="mt-1 text-[10px] text-ink-faint">Only open client source incidents can enter the recovery preview. Gateway integrity incidents stay read only.</p>
           </div>
-          <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-ink-faint">{data.length} records</span>
+          <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-ink-faint">{filteredData.length} shown · {data.length} total</span>
         </CardHeader>
         <CardContent className="p-0">
-          {data.length === 0 ? <EmptyState message="No recovery incidents were returned for this workspace." /> : (
+          {filteredData.length === 0 ? <EmptyState message={data.length === 0 ? "No recovery incidents were returned for this workspace." : "No incidents match these filters."} /> : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[900px] border-collapse text-xs">
                 <thead>
@@ -81,7 +125,7 @@ export function ActiveIncidents({ data, requests, onPrepare }: ActiveIncidentsPr
                   </tr>
                 </thead>
                 <tbody>
-                  {data.map((incident) => {
+                  {filteredData.map((incident) => {
                     const canSelect = isActionableScope(incident) && incident.status === "OPEN";
                     const request = requestByIncident.get(incident.id);
                     const requestStatus = String(request?.status || "").toUpperCase();
