@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 const LoginPage = lazy(() => import("@/pages/LoginPage").then((module) => ({ default: module.LoginPage })));
 const MonitorPage = lazy(() => import("@/pages/MonitorPage").then((module) => ({ default: module.MonitorPage })));
 const RecoveryPage = lazy(() => import("@/pages/RecoveryPage").then((module) => ({ default: module.RecoveryPage })));
+const RecoveryDemo = lazy(() => import("@/components/recovery/RecoveryDemo").then((module) => ({ default: module.RecoveryDemo })));
 
 function ProtectedRoute() {
   const { session, isLoading } = useAuth();
@@ -39,6 +40,8 @@ function LazyPage({ children }: { children: ReactNode }) {
 export const router = createBrowserRouter([
   { path: "/", element: <RootRedirect /> },
   { path: "/login", element: <LazyPage><LoginPage /></LazyPage> },
+  // Keep the prototype available separately from the live client recovery workflow.
+  { path: "/recovery-demo", element: <LazyPage><RecoveryDemo /></LazyPage> },
   {
     element: <ProtectedRoute />,
     children: [{

@@ -33,7 +33,7 @@ export function recoveryErrorMessage(error: unknown): string {
     if (error.status === 0) return "Gateway tidak dapat dihubungi. Periksa koneksi lalu coba lagi.";
     if (error.status === 401) return "Sesi berakhir. Silakan login kembali.";
     if (error.status === 403) return "Akun ini tidak memiliki izin untuk menjalankan recovery.";
-    if (error.status === 404) return "Fitur recovery belum diaktifkan pada gateway ini.";
+    if (error.status === 404) return "Gateway membalas 404 untuk API Recovery. Pastikan versi Gateway memiliki route Recovery dan RECOVERY_ENABLED=true.";
     if (error.status === 409) return `Kondisi recovery berubah: ${error.message}`;
     if (error.status === 503) return "Agent, Fabric, atau layanan recovery sedang tidak tersedia.";
     return error.message || "Permintaan recovery gagal.";
@@ -60,10 +60,11 @@ export class ApiRecoveryService implements RecoveryService {
     return unwrapData(response) ?? [];
   }
 
-  async getHistory(token?: string): Promise<RecoveryEventPage> {
+  async getHistory(token?: string, page = 1): Promise<RecoveryEventPage> {
     if (!token) throw new Error("Session client tidak tersedia.");
+    const params = new URLSearchParams({ page: String(Math.max(1, page)), page_size: "100", include_legacy: "false" });
     return apiClient.get<RecoveryEventPage>(
-      "/dashboard/recovery/events?page=1&page_size=100&include_legacy=false",
+      `/dashboard/recovery/events?${params.toString()}`,
       token,
     );
   }

@@ -8,7 +8,7 @@ export type RecoverySourceStatus =
   | "UNREACHABLE"
   | "NOT_COMPARABLE"
   | string;
-export type RecoveryOperation = "UPSERT" | "DELETE" | "NOOP" | string;
+export type RecoveryOperation = "UPSERT" | "DELETE" | "NOOP" | "RESTORE_AUDIT_LOG" | string;
 export type RecoveryRequestStatus =
   | "PENDING_EXECUTION"
   | "PENDING_APPROVAL"
@@ -49,6 +49,7 @@ export interface RecoveryCandidate {
   log_id: string;
   resource?: string;
   operation?: RecoveryOperation;
+  recovery_source?: string;
   reference_log_hash?: string;
   reference_merkle_root?: string;
   reference_anchor_id?: string;
@@ -87,6 +88,7 @@ export interface RecoveryPreflight {
   agent_status?: string;
   source_found?: boolean;
   snapshot_preview?: RecoveryTrustedPreview;
+  trusted_reference_preview?: RecoveryTrustedPreview;
 }
 
 export interface RecoveryRequest {
@@ -110,6 +112,7 @@ export interface RecoveryRequest {
   requested_at?: string;
   executed_at?: string | null;
   execution_started_at?: string | null;
+  cdc_deadline_at?: string | null;
 }
 
 export interface RecoveryEvent {
@@ -145,6 +148,7 @@ export interface RecoveryEvent {
   integrity_error?: string;
   snapshot_status?: string;
   legacy?: boolean;
+  storage_kind?: string;
 }
 
 export interface RecoveryEventPage {

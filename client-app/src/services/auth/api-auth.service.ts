@@ -73,7 +73,7 @@ function mapAuthError(error: unknown): Error {
 
   if (error.status === 0) return new Error("Backend tidak dapat dihubungi.");
   if (error.status === 401) return new Error("Username atau password salah.");
-  if (error.status === 403) return new Error("Akun atau client sedang tidak aktif.");
+  if (error.status === 403) return new Error("Client yang terhubung ke akun ini belum aktif atau tidak ditemukan. Minta admin Gateway memeriksa status client.");
 
   return new Error(error.message || "Login gagal. Silakan coba lagi.");
 }

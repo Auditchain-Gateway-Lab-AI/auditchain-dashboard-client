@@ -1,5 +1,6 @@
-import { Database, History, RotateCw, ShieldCheck } from "lucide-react";
-import { useMemo, useState } from "react";
+import { CheckCircle2, Database, History, LifeBuoy, RotateCw, ShieldCheck } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 import { ActiveIncidents } from "@/components/recovery/ActiveIncidents";
 import { RecoveryDrawer } from "@/components/recovery/RecoveryDrawer";
@@ -18,32 +19,45 @@ const tabs: Array<{ id: RecoveryTab; label: string; icon: typeof Database }> = [
 ];
 const EMPTY_HISTORY: RecoveryEventPage = { data: [], page: 1, page_size: 100, total_items: 0, total_pages: 0 };
 const ACTIVE_STATUSES = new Set(["PENDING_EXECUTION", "EXECUTING", "APPLIED_AWAITING_CDC"]);
+type IncidentFilter = "ALL" | "OPEN" | "RESOLVED" | "ACTIVE_RECOVERY";
+type ScopeFilter = "ALL" | "CLIENT_SOURCE" | "GATEWAY_INTEGRITY";
+type HistoryFilter = "ALL" | "SUCCEEDED" | "NEEDS_REVIEW";
 
 export function RecoveryPage() {
   const [tab, setTab] = useState<RecoveryTab>("incidents");
+  const [incidentFilter, setIncidentFilter] = useState<IncidentFilter>("ALL");
+  const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("ALL");
+  const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("ALL");
+  const [historyPage, setHistoryPage] = useState(1);
   const [drawerIds, setDrawerIds] = useState<string[] | null>(null);
-  const recovery = useRecoveryData();
+  const recovery = useRecoveryData(historyPage);
   const refresh = useRecoveryRefresh();
   const incidents = recovery.incidents.data ?? [];
   const requests = recovery.requests.data ?? [];
   const history = recovery.history.data ?? EMPTY_HISTORY;
-  const openClientIncidents = incidents.filter((item) => item.incident_scope === "CLIENT_SOURCE" && item.status === "OPEN").length;
+  const openIncidents = incidents.filter((item) => ["CLIENT_SOURCE", "GATEWAY_INTEGRITY"].includes(String(item.incident_scope).toUpperCase()) && item.status === "OPEN").length;
   const inProgress = requests.filter((request) => ACTIVE_STATUSES.has(String(request.status).toUpperCase())).length;
   const successful = history.data.filter((event) => event.result_status === "SUCCEEDED").length;
   const error = useMemo(() => recovery.error ? recoveryErrorMessage(recovery.error) : "", [recovery.error]);
 
+  useEffect(() => {
+    const lastPage = Math.max(history.total_pages, 1);
+    if (historyPage > lastPage) setHistoryPage(lastPage);
+  }, [history.total_pages, historyPage]);
+
   if (recovery.isInitialLoading) return <RecoverySkeleton />;
-  if (!recovery.incidents.data && recovery.incidents.isError) {
-    return <RecoveryUnavailable message={error || "Recovery incidents could not be loaded."} onRetry={() => void refresh()} />;
+  if (recovery.incidents.isError || recovery.requests.isError) {
+    const coreError = recovery.incidents.error || recovery.requests.error;
+    return <RecoveryUnavailable message={coreError ? recoveryErrorMessage(coreError) : "Recovery data could not be loaded."} onRetry={() => void refresh()} />;
   }
 
   return (
     <main className="space-y-3 px-3 pb-8 pt-5 lg:px-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <div className="flex items-center gap-2"><ShieldCheck className="size-4 text-brand-bright" /><span className="font-mono text-[9px] uppercase tracking-[0.14em] text-brand-bright">Client recovery</span><Badge tone="info">Agent direct</Badge></div>
+          <div className="flex items-center gap-2"><ShieldCheck className="size-4 text-brand-bright" /><span className="font-mono text-[9px] uppercase tracking-[0.14em] text-brand-bright">Recovery operations</span><Badge tone="success">Live Gateway API</Badge></div>
           <h1 className="mt-1 text-[27px] font-semibold tracking-tight text-ink">Recovery Workspace</h1>
-          <p className="mt-1 max-w-2xl text-xs text-ink-dim">Review client source incidents and restore eligible rows from verified AuditChain events. Completion waits for CDC and recovery evidence verification.</p>
+          <p className="mt-1 max-w-2xl text-xs text-ink-dim">Review client source and Gateway integrity incidents. Client row restores wait for CDC verification; Gateway audit metadata restores use the verified source event and anchored reference.</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={recovery.incidents.isFetching || recovery.requests.isFetching || recovery.history.isFetching}>
           <RotateCw className={`size-3.5 ${(recovery.incidents.isFetching || recovery.requests.isFetching || recovery.history.isFetching) ? "animate-spin" : ""}`} /> Refresh
@@ -53,25 +67,25 @@ export function RecoveryPage() {
       {error && <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2.5 text-xs text-warning" role="alert"><span>{error}</span><Button variant="ghost" size="sm" onClick={() => void refresh()}>Retry</Button></div>}
 
       <div className="grid gap-2 sm:grid-cols-3">
-        <SummaryCard label="Open client incidents" value={openClientIncidents} detail="Recovery candidates require preflight" tone="danger" />
-        <SummaryCard label="Recovery in progress" value={inProgress} detail="Includes CDC confirmation wait" tone="info" />
-        <SummaryCard label="Successful events loaded" value={successful} detail={`From ${history.total_items} recovery events`} tone="success" />
+        <SummaryCard icon={LifeBuoy} label="Open recovery incidents" value={openIncidents} detail="Client row and Gateway metadata" tone="danger" onClick={() => { setTab("incidents"); setIncidentFilter("OPEN"); setScopeFilter("ALL"); }} />
+        <SummaryCard icon={RotateCw} label="Recovery in progress" value={inProgress} detail="Includes CDC wait for client row restores" tone="info" onClick={() => { setTab("incidents"); setIncidentFilter("ACTIVE_RECOVERY"); setScopeFilter("ALL"); }} />
+        <SummaryCard icon={CheckCircle2} label="Successful events on page" value={successful} detail={`Page ${history.page} of ${Math.max(history.total_pages, 1)} · ${history.total_items} total events`} tone="success" onClick={() => { setTab("history"); setHistoryFilter("SUCCEEDED"); setHistoryPage(1); }} />
       </div>
 
       <div className="flex w-full gap-1 overflow-x-auto rounded-lg border border-line bg-panel p-1 sm:w-auto" role="tablist" aria-label="Recovery sections">
         {tabs.map(({ id, label, icon: Icon }) => <Button key={id} variant="ghost" size="sm" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={`shrink-0 ${tab === id ? "bg-navy-bright/25 text-ink" : ""}`}><Icon className="size-3.5" /> {label}</Button>)}
       </div>
 
-      {tab === "incidents" && <ActiveIncidents data={incidents} requests={requests} onPrepare={setDrawerIds} />}
-      {tab === "history" && recovery.history.isError ? <RecoveryUnavailable message={recoveryErrorMessage(recovery.history.error)} onRetry={() => void refresh()} /> : tab === "history" ? <RecoveryHistory data={history} /> : null}
+      {tab === "incidents" && <ActiveIncidents data={incidents} requests={requests} filter={incidentFilter} scope={scopeFilter} onFilterChange={setIncidentFilter} onScopeChange={setScopeFilter} onPrepare={setDrawerIds} />}
+      {tab === "history" && recovery.history.isError ? <RecoveryUnavailable message={recoveryErrorMessage(recovery.history.error)} onRetry={() => void refresh()} /> : tab === "history" ? <RecoveryHistory data={history} filter={historyFilter} onFilterChange={setHistoryFilter} onPageChange={setHistoryPage} isFetching={recovery.history.isFetching} /> : null}
       {drawerIds && <RecoveryDrawer ids={drawerIds} incidents={incidents} requests={requests} token={recovery.token} onClose={() => setDrawerIds(null)} onUpdated={() => void refresh()} />}
     </main>
   );
 }
 
-function SummaryCard({ label, value, detail, tone }: { label: string; value: number; detail: string; tone: "success" | "danger" | "info" }) {
+function SummaryCard({ icon: Icon, label, value, detail, tone, onClick }: { icon: LucideIcon; label: string; value: number; detail: string; tone: "success" | "danger" | "info"; onClick: () => void }) {
   const iconClass = tone === "success" ? "bg-success/10 text-success" : tone === "danger" ? "bg-danger/10 text-danger" : "bg-info/10 text-info";
-  return <div className="flex items-center gap-3 rounded-lg border border-line bg-panel px-3.5 py-3"><span className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${iconClass}`}><ShieldCheck className="size-4" /></span><div className="min-w-0"><div className="flex items-baseline gap-2"><strong className="font-mono text-xl text-ink">{value}</strong><span className="truncate text-[10px] font-semibold text-ink-dim">{label}</span></div><p className="truncate text-[9px] text-ink-faint">{detail}</p></div></div>;
+  return <button type="button" onClick={onClick} className="flex w-full items-center gap-3 rounded-lg border border-line bg-panel px-3.5 py-3 text-left transition-colors hover:border-line-strong hover:bg-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-bright"><span className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${iconClass}`}><Icon className="size-4" /></span><span className="min-w-0 flex-1"><span className="flex items-baseline gap-2"><strong className="font-mono text-xl text-ink">{value}</strong><span className="truncate text-[10px] font-semibold text-ink-dim">{label}</span></span><span className="block truncate text-[9px] text-ink-faint">{detail}</span></span></button>;
 }
 
 function RecoverySkeleton() {

@@ -18,7 +18,7 @@ export interface CreateRecoveryRequestInput {
 export interface RecoveryService {
   getIncidents(token?: string): Promise<RecoveryIncident[]>;
   getRequests(token?: string): Promise<RecoveryRequest[]>;
-  getHistory(token?: string): Promise<RecoveryEventPage>;
+  getHistory(token?: string, page?: number): Promise<RecoveryEventPage>;
   getIncident(token: string | undefined, incidentId: string): Promise<RecoveryIncidentDetail>;
   getCandidates(token: string | undefined, incidentId: string): Promise<RecoveryCandidate[]>;
   runPreflight(token: string | undefined, incidentId: string): Promise<RecoveryPreflight>;

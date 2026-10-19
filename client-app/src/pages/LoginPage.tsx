@@ -63,12 +63,12 @@ export function LoginPage() {
             Integrity monitoring for every <span className="text-brand-bright">critical record.</span>
           </h1>
           <p className="mt-4 max-w-md text-sm leading-relaxed text-ink-dim">
-            A compact, read-only view of audit health, verification status, and incidents across your monitored data sources.
+            A compact view of audit health, verification status, and incidents across your monitored data sources.
           </p>
           <div className="mt-8 flex flex-wrap gap-5 text-[9px] font-semibold uppercase tracking-[0.14em] text-ink-faint">
             <span className="flex items-center gap-1.5"><ShieldCheck className="size-3 text-success" /> Tamper-evident</span>
             <span className="flex items-center gap-1.5"><ShieldCheck className="size-3 text-success" /> Server verified</span>
-            <span className="flex items-center gap-1.5"><ShieldCheck className="size-3 text-success" /> Read only</span>
+            <span className="flex items-center gap-1.5"><ShieldCheck className="size-3 text-success" /> Client recovery</span>
           </div>
         </section>
 
