@@ -1,0 +1,26 @@
+# Local source build for the active client branch. It does not pull or replace
+# the immutable image used by the existing Besu deployment compose files.
+services:
+  dashboard:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        CLIENT_CONTAINER_PORT: ${CLIENT_CONTAINER_PORT:-8080}
+        VITE_API_BASE_URL: /api
+        VITE_GATEWAY_PORTAL_URL: ${VITE_GATEWAY_PORTAL_URL:-}
+    image: ${CLIENT_BRANCH_IMAGE:-auditchain-client-portal:branch-test}
+    container_name: ${CLIENT_BRANCH_CONTAINER:-auditchain-client-portal-branch-test}
+    restart: unless-stopped
+    ports:
+      - "${CLIENT_TEST_BIND_IP:-127.0.0.1}:${CLIENT_TEST_PORT:-13002}:${CLIENT_CONTAINER_PORT:-8080}"
+    environment:
+      AUDITCHAIN_API_UPSTREAM: ${AUDITCHAIN_API_UPSTREAM:?Set a Gateway URL reachable by this server}
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m,mode=1777
+      - /etc/nginx/conf.d:rw,noexec,nosuid,nodev,size=1m,uid=101,gid=101,mode=755

@@ -14,12 +14,38 @@ interface DataEnvelope<T> {
   data: T;
 }
 
+interface ListPage<T> {
+  data: T[];
+  total_pages?: number;
+}
+
 const unwrapData = <T,>(response: DataEnvelope<T> | T): T => {
   if (response && typeof response === "object" && "data" in response) {
     return (response as DataEnvelope<T>).data;
   }
   return response as T;
 };
+
+async function getAllPages<T>(path: string, token: string): Promise<T[]> {
+  const pageSize = 100;
+  const first = await apiClient.get<ListPage<T> | DataEnvelope<T[]>>(
+    `${path}?page=1&page_size=${pageSize}`,
+    token,
+  );
+  const firstRows = Array.isArray(first) ? first : (Array.isArray(first.data) ? first.data : []);
+  const totalPages = Math.max(1, Number((first as ListPage<T>).total_pages) || 1);
+  if (totalPages === 1) return firstRows;
+
+  const remaining = await Promise.all(Array.from({ length: totalPages - 1 }, (_, index) => (
+    apiClient.get<ListPage<T> | DataEnvelope<T[]>>(
+      `${path}?page=${index + 2}&page_size=${pageSize}`,
+      token,
+    )
+  )));
+  return [firstRows, ...remaining.map((response) => (
+    Array.isArray(response) ? response : (Array.isArray(response.data) ? response.data : [])
+  ))].flat();
+}
 
 const newIdempotencyKey = () => {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -44,20 +70,12 @@ export function recoveryErrorMessage(error: unknown): string {
 export class ApiRecoveryService implements RecoveryService {
   async getIncidents(token?: string): Promise<RecoveryIncident[]> {
     if (!token) throw new Error("Session client tidak tersedia.");
-    const response = await apiClient.get<DataEnvelope<RecoveryIncident[]>>(
-      "/dashboard/recovery/incidents",
-      token,
-    );
-    return unwrapData(response) ?? [];
+    return getAllPages<RecoveryIncident>("/dashboard/recovery/incidents", token);
   }
 
   async getRequests(token?: string): Promise<RecoveryRequest[]> {
     if (!token) throw new Error("Session client tidak tersedia.");
-    const response = await apiClient.get<DataEnvelope<RecoveryRequest[]>>(
-      "/dashboard/recovery/requests",
-      token,
-    );
-    return unwrapData(response) ?? [];
+    return getAllPages<RecoveryRequest>("/dashboard/recovery/requests", token);
   }
 
   async getHistory(token?: string, page = 1): Promise<RecoveryEventPage> {
