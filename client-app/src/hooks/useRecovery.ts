@@ -16,10 +16,10 @@ export const recoveryKeys = {
   all: (workspaceId?: string) => ["recovery", workspaceId || "no-workspace"] as const,
   incidents: (workspaceId?: string) => ["recovery", workspaceId || "no-workspace", "incidents"] as const,
   requests: (workspaceId?: string) => ["recovery", workspaceId || "no-workspace", "requests"] as const,
-  history: (workspaceId?: string) => ["recovery", workspaceId || "no-workspace", "history"] as const,
+  history: (workspaceId?: string, page = 1) => ["recovery", workspaceId || "no-workspace", "history", page] as const,
 };
 
-export function useRecoveryData() {
+export function useRecoveryData(historyPage = 1) {
   const { session } = useAuth();
   const token = session?.token;
   const workspaceId = session?.user.workspace.id;
@@ -49,8 +49,9 @@ export function useRecoveryData() {
     refetchOnReconnect: (query) => !query.state.error,
   });
   const history = useQuery({
-    queryKey: recoveryKeys.history(workspaceId),
-    queryFn: () => recoveryService.getHistory(token),
+    queryKey: recoveryKeys.history(workspaceId, historyPage),
+    queryFn: () => recoveryService.getHistory(token, historyPage),
+    placeholderData: (previousData) => previousData,
     enabled: Boolean(token),
     retry: retryRecoveryQuery,
     refetchInterval: (query) => {

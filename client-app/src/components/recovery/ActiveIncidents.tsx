@@ -86,7 +86,7 @@ export function ActiveIncidents({ data, requests, filter, scope, onFilterChange,
       {selectedIds.length > 0 && (
         <div className="flex flex-col gap-3 rounded-lg border border-line-strong bg-elevated px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-xs">
-            <span className="font-semibold text-ink">{selectedIds.length} client source incident{selectedIds.length === 1 ? "" : "s"} selected</span>
+            <span className="font-semibold text-ink">{selectedIds.length} recovery incident{selectedIds.length === 1 ? "" : "s"} selected</span>
             <span className="mx-2 text-ink-faint">|</span>
             <span className="text-ink-dim">Eligibility is checked by the gateway during preview.</span>
           </div>
@@ -103,7 +103,7 @@ export function ActiveIncidents({ data, requests, filter, scope, onFilterChange,
         <CardHeader>
           <div>
             <CardTitle>Recovery incidents</CardTitle>
-            <p className="mt-1 text-[10px] text-ink-faint">Only open client source incidents can enter the recovery preview. Gateway integrity incidents stay read only.</p>
+            <p className="mt-1 text-[10px] text-ink-faint">Open client source incidents restore a client row. Gateway integrity incidents restore verified audit metadata.</p>
           </div>
           <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-ink-faint">{filteredData.length} shown · {data.length} total</span>
         </CardHeader>
@@ -114,7 +114,7 @@ export function ActiveIncidents({ data, requests, filter, scope, onFilterChange,
                 <thead>
                   <tr className="text-[9px] uppercase tracking-[0.09em] text-ink-faint">
                     <th className="w-10 px-3.5 py-2.5 text-left">
-                      <input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="Select all open client source incidents" className="accent-brand" disabled={!selectable.length} />
+                      <input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label="Select all open recoverable incidents" className="accent-brand" disabled={!selectable.length} />
                     </th>
                     <Head className="text-left">Target log / resource</Head>
                     <Head className="text-left">Scope / issue</Head>
@@ -182,7 +182,7 @@ export function latestRequestByIncident(requests: RecoveryRequest[]) {
 }
 
 export function isActionableScope(incident: RecoveryIncident) {
-  return String(incident.incident_scope || "").toUpperCase() === "CLIENT_SOURCE";
+  return ["CLIENT_SOURCE", "GATEWAY_INTEGRITY"].includes(String(incident.incident_scope || "").toUpperCase());
 }
 
 function sourceTone(status?: string) {

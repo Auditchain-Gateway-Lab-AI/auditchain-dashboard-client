@@ -60,10 +60,11 @@ export class ApiRecoveryService implements RecoveryService {
     return unwrapData(response) ?? [];
   }
 
-  async getHistory(token?: string): Promise<RecoveryEventPage> {
+  async getHistory(token?: string, page = 1): Promise<RecoveryEventPage> {
     if (!token) throw new Error("Session client tidak tersedia.");
+    const params = new URLSearchParams({ page: String(Math.max(1, page)), page_size: "100", include_legacy: "false" });
     return apiClient.get<RecoveryEventPage>(
-      "/dashboard/recovery/events?page=1&page_size=100&include_legacy=false",
+      `/dashboard/recovery/events?${params.toString()}`,
       token,
     );
   }

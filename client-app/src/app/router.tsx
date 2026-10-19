@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 
 const LoginPage = lazy(() => import("@/pages/LoginPage").then((module) => ({ default: module.LoginPage })));
 const MonitorPage = lazy(() => import("@/pages/MonitorPage").then((module) => ({ default: module.MonitorPage })));
+const RecoveryPage = lazy(() => import("@/pages/RecoveryPage").then((module) => ({ default: module.RecoveryPage })));
 const RecoveryDemo = lazy(() => import("@/components/recovery/RecoveryDemo").then((module) => ({ default: module.RecoveryDemo })));
 
 function ProtectedRoute() {
@@ -39,7 +40,7 @@ function LazyPage({ children }: { children: ReactNode }) {
 export const router = createBrowserRouter([
   { path: "/", element: <RootRedirect /> },
   { path: "/login", element: <LazyPage><LoginPage /></LazyPage> },
-  // Keep a public preview path, while the protected Recovery menu also uses this local prototype until Gateway Recovery is available.
+  // Keep the prototype available separately from the live client recovery workflow.
   { path: "/recovery-demo", element: <LazyPage><RecoveryDemo /></LazyPage> },
   {
     element: <ProtectedRoute />,
@@ -47,7 +48,7 @@ export const router = createBrowserRouter([
       element: <ClientLayout />,
       children: [
         { path: "/monitor", element: <LazyPage><MonitorPage /></LazyPage> },
-        { path: "/recovery", element: <LazyPage><RecoveryDemo /></LazyPage> },
+        { path: "/recovery", element: <LazyPage><RecoveryPage /></LazyPage> },
       ],
     }],
   },

@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 
-import { Search, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/panel-state";
@@ -9,7 +9,13 @@ import type { RecoveryEvent, RecoveryEventPage } from "@/types/recovery";
 
 type HistoryFilter = "ALL" | "SUCCEEDED" | "NEEDS_REVIEW";
 
-export function RecoveryHistory({ data, filter, onFilterChange }: { data: RecoveryEventPage; filter: HistoryFilter; onFilterChange: (value: HistoryFilter) => void }) {
+export function RecoveryHistory({ data, filter, onFilterChange, onPageChange, isFetching }: {
+  data: RecoveryEventPage;
+  filter: HistoryFilter;
+  onFilterChange: (value: HistoryFilter) => void;
+  onPageChange: (page: number) => void;
+  isFetching: boolean;
+}) {
   const [selected, setSelected] = useState<RecoveryEvent | null>(null);
   const [query, setQuery] = useState("");
   const events = data.data || [];
@@ -54,7 +60,7 @@ export function RecoveryHistory({ data, filter, onFilterChange }: { data: Recove
                       <Cell>{event.operation || "—"}</Cell>
                       <Cell><Badge tone={resultTone(event.result_status)}>{formatStatus(event.result_status)}</Badge>{event.failure_reason && <small className="mt-1 block max-w-52 text-ink-faint">{event.failure_reason}</small>}</Cell>
                       <Cell><Badge tone={integrityTone(event.integrity_status)}>{formatStatus(event.integrity_status || "NOT_CHECKED")}</Badge></Cell>
-                      <Cell><Badge tone={event.cdc_status === "CONFIRMED" ? "success" : event.cdc_status === "TIMEOUT" || event.cdc_status === "CONFLICT" ? "danger" : "warning"}>{formatStatus(event.cdc_status || "UNKNOWN")}</Badge></Cell>
+                      <Cell><Badge tone={event.cdc_status === "CONFIRMED" || event.cdc_status === "NOT_REQUIRED" ? "success" : event.cdc_status === "TIMEOUT" || event.cdc_status === "CONFLICT" ? "danger" : "warning"}>{formatStatus(event.cdc_status || "UNKNOWN")}</Badge></Cell>
                       <Cell>{formatDate(event.executed_at)}</Cell>
                     </tr>
                   ))}
@@ -64,7 +70,18 @@ export function RecoveryHistory({ data, filter, onFilterChange }: { data: Recove
           )}
         </CardContent>
       </Card>
-      {data.total_pages > 1 && <p className="text-right text-[10px] text-ink-faint">Showing page {data.page} of {data.total_pages} · latest 100 events loaded</p>}
+      <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] text-ink-faint">
+        <p>Search and status filters apply to this page. {data.page_size} events are requested per page.</p>
+        <div className="flex items-center gap-2" aria-label="Recovery history pages">
+          <Button variant="outline" size="sm" onClick={() => onPageChange(Math.max(1, data.page - 1))} disabled={isFetching || data.page <= 1} aria-label="Previous recovery history page">
+            <ChevronLeft className="size-3.5" /> Previous
+          </Button>
+          <span aria-live="polite">Page {data.page} of {Math.max(data.total_pages, 1)}</span>
+          <Button variant="outline" size="sm" onClick={() => onPageChange(data.page + 1)} disabled={isFetching || data.page >= data.total_pages} aria-label="Next recovery history page">
+            Next <ChevronRight className="size-3.5" />
+          </Button>
+        </div>
+      </div>
       {selected && <EventDetails event={selected} onClose={() => setSelected(null)} />}
     </div>
   );

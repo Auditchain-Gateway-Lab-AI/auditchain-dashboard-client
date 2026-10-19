@@ -19,6 +19,7 @@ import type {
 type Stage = "review" | "confirm" | "working" | "results";
 const activeRequestStatuses = new Set(["PENDING_EXECUTION", "EXECUTING", "APPLIED_AWAITING_CDC"]);
 const terminalRequestStatuses = new Set(["SUCCEEDED", "APPLIED_CDC_TIMEOUT", "FAILED_VERIFICATION", "FAILED_EXECUTION", "REJECTED"]);
+const requestPollMs = 4_000;
 
 interface RecoveryDrawerProps {
   ids: string[];
@@ -35,9 +36,12 @@ export function RecoveryDrawer({ ids, incidents, requests, token, onClose, onUpd
   const [results, setResults] = useState<RecoveryExecutionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
+  const [workingMessage, setWorkingMessage] = useState("Starting recovery requests…");
   const [error, setError] = useState("");
+  const [reason, setReason] = useState("");
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const pollingRef = useRef(false);
+  const idempotencyKeysRef = useRef(new Map<string, string>());
   const refreshRecovery = useRecoveryRefresh();
   const incidentById = useMemo(() => new Map(incidents.map((incident) => [incident.id, incident])), [incidents]);
   const requestByIncident = useMemo(() => latestRequestByIncident(requests), [requests]);
@@ -52,14 +56,16 @@ export function RecoveryDrawer({ ids, incidents, requests, token, onClose, onUpd
       try {
         incident = await recoveryService.getIncident(token, id);
       } catch (incidentError) {
-        if (!listedIncident) {
-          return { incident: { id, client_id: "", log_id: "", resource: "Unknown resource", incident_type: "", status: "OPEN", incident_scope: "", detected_at: "" }, ready: false, error: recoveryErrorMessage(incidentError) };
-        }
-        incident = listedIncident;
+        return {
+          incident: listedIncident || { id, client_id: "", log_id: "", resource: "Unknown resource", incident_type: "", status: "OPEN", incident_scope: "", detected_at: "" },
+          request,
+          ready: false,
+          error: `Latest incident details could not be confirmed: ${recoveryErrorMessage(incidentError)}`,
+        };
       }
 
-      if (String(incident.incident_scope).toUpperCase() !== "CLIENT_SOURCE") {
-        return { incident, request, ready: false, error: "Gateway integrity incidents are read only in this recovery workflow." };
+      if (!["CLIENT_SOURCE", "GATEWAY_INTEGRITY"].includes(String(incident.incident_scope).toUpperCase())) {
+        return { incident, request, ready: false, error: "This incident scope is not supported by the recovery workflow." };
       }
       if (incident.status !== "OPEN") {
         return { incident, request, ready: false, error: "This incident is already closed. Review its recovery event in history." };
@@ -73,10 +79,10 @@ export function RecoveryDrawer({ ids, incidents, requests, token, onClose, onUpd
 
       try {
         const candidates = await recoveryService.getCandidates(token, id);
-        const targetLogId = incident.reference_log_id || incident.log_id;
-        const candidate = candidates.find((item) => item.log_id === targetLogId) || candidates[0];
+        const candidateLogIds = new Set([incident.reference_log_id, incident.log_id].filter(Boolean));
+        const candidate = candidates.find((item) => candidateLogIds.has(item.log_id));
         if (!candidate?.eligible) {
-          return { incident, candidate, request, ready: false, error: friendlyReason(candidate?.reason || "No eligible trusted reference was returned.") };
+          return { incident, candidate, request, ready: false, error: friendlyReason(candidate?.reason || "The gateway did not return an eligible candidate for this incident's trusted reference.") };
         }
         const preflight = await recoveryService.runPreflight(token, id);
         const ready = preflight.status === "VALID" && preflight.recoverable;
@@ -86,7 +92,7 @@ export function RecoveryDrawer({ ids, incidents, requests, token, onClose, onUpd
           preflight,
           request,
           ready: Boolean(ready),
-          error: ready ? undefined : preflight.status === "NO_RECOVERY_REQUIRED" ? "The client row already matches the trusted reference." : `Preflight did not allow recovery (${preflight.status}).`,
+          error: ready ? undefined : preflight.status === "NO_RECOVERY_REQUIRED" ? "The current state already matches the trusted reference." : `Preflight did not allow recovery (${preflight.status}).`,
         };
       } catch (previewError) {
         return { incident, request, ready: false, error: friendlyReason(recoveryErrorMessage(previewError)) };
@@ -142,7 +148,7 @@ export function RecoveryDrawer({ ids, incidents, requests, token, onClose, onUpd
         pollingRef.current = false;
       }
     };
-    const timer = window.setInterval(() => void poll(), 4_000);
+    const timer = window.setInterval(() => void poll(), requestPollMs);
     void poll();
     return () => {
       active = false;
@@ -156,19 +162,102 @@ export function RecoveryDrawer({ ids, incidents, requests, token, onClose, onUpd
     setStage("working");
     setError("");
     const nextResults: RecoveryExecutionItem[] = [];
+    const readyItems = preview.filter((candidate) => candidate.ready);
+    let stopBatchReason = "";
+
+    let latestRequests: RecoveryRequest[];
+    try {
+      latestRequests = await recoveryService.getRequests(token);
+    } catch (requestError) {
+      const message = `${recoveryErrorMessage(requestError)} No recovery request was submitted because current resource locks could not be checked.`;
+      nextResults.push(...readyItems.map((item) => ({ incident: item.incident, error: message })));
+      setResults([...nextResults, ...preview.filter((item) => !item.ready).map((item) => ({ incident: item.incident, request: item.request, error: item.error || "Recovery is not eligible." }))]);
+      setStage("results");
+      setWorking(false);
+      return;
+    }
+    const latestByIncident = latestRequestByIncident(latestRequests);
+    const activeByResource = new Map<string, RecoveryRequest>();
+    for (const request of latestRequests) {
+      const resourceKey = String(request.resource || "").toLowerCase();
+      const current = activeByResource.get(resourceKey);
+      if (resourceKey && activeRequestStatuses.has(String(request.status).toUpperCase())
+        && (!current || new Date(request.requested_at || 0).getTime() > new Date(current.requested_at || 0).getTime())) {
+        activeByResource.set(resourceKey, request);
+      }
+    }
 
     // Execute serially. The backend permits only one active recovery for a
-    // tenant/resource, so selected items sharing a resource must not race.
-    for (const item of preview.filter((candidate) => candidate.ready)) {
+    // tenant/resource. Wait for the active request to finish, including CDC
+    // confirmation when it restores a client row.
+    for (let index = 0; index < readyItems.length; index += 1) {
+      const item = readyItems[index];
+      if (!item) continue;
+      const resourceKey = String(item.incident.resource || "").toLowerCase();
+      let blocker = resourceKey ? activeByResource.get(resourceKey) : undefined;
+      if (blocker && blocker.incident_id !== item.incident.id) {
+        if (String(blocker.status).toUpperCase() === "PENDING_EXECUTION") {
+          stopBatchReason = `An earlier recovery request for ${item.incident.resource} is still pending execution. Resume it before continuing this batch.`;
+        }
+        const blockerDeadline = blocker?.cdc_deadline_at
+          ? new Date(blocker.cdc_deadline_at).getTime()
+          : Date.now() + 120_000;
+        while (!stopBatchReason && blocker && activeRequestStatuses.has(String(blocker.status).toUpperCase())) {
+          if (Date.now() >= blockerDeadline) {
+            stopBatchReason = `Timed out waiting for ${item.incident.resource} recovery to finish. The remaining items were not submitted.`;
+            break;
+          }
+          setWorkingMessage(`Waiting for ${item.incident.resource} recovery ${formatStatus(blocker.status)} to finish before the next request…`);
+          await wait(Math.min(requestPollMs, Math.max(0, blockerDeadline - Date.now())));
+          try {
+            blocker = await recoveryService.getRequest(token, blocker.id);
+            if (String(blocker.status).toUpperCase() === "PENDING_EXECUTION") {
+              stopBatchReason = `An earlier recovery request for ${item.incident.resource} is still pending execution. Resume it before continuing this batch.`;
+            }
+            if (resourceKey && activeRequestStatuses.has(String(blocker.status).toUpperCase())) activeByResource.set(resourceKey, blocker);
+            else if (resourceKey) activeByResource.delete(resourceKey);
+          } catch {
+            stopBatchReason = `Could not confirm the earlier ${item.incident.resource} recovery status. The remaining items were not submitted.`;
+          }
+        }
+      }
+      if (stopBatchReason) {
+        nextResults.push(...readyItems.slice(index).map((remaining) => ({ incident: remaining.incident, error: stopBatchReason })));
+        break;
+      }
+
+      let request = latestByIncident.get(item.incident.id) || item.request;
+      if (request && ["EXECUTING", "APPLIED_AWAITING_CDC"].includes(String(request.status).toUpperCase())) {
+        if (resourceKey) activeByResource.set(resourceKey, request);
+        nextResults.push({ incident: item.incident, request });
+        setResults([...nextResults]);
+        continue;
+      }
+      setWorkingMessage(`Submitting recovery for ${item.incident.resource}…`);
       try {
-        let request = item.request;
         if (!request || !["PENDING_EXECUTION", "EXECUTING", "APPLIED_AWAITING_CDC"].includes(String(request.status).toUpperCase())) {
-          request = await recoveryService.createRequest(token, {
-            incident_id: item.incident.id,
-            selected_log_id: item.candidate?.log_id || item.incident.reference_log_id || item.incident.log_id,
-            reason: "Recovery initiated from the client portal recovery workspace.",
-            idempotency_key: makeIdempotencyKey(),
-          });
+          let idempotencyKey = idempotencyKeysRef.current.get(item.incident.id);
+          if (!idempotencyKey) {
+            idempotencyKey = makeIdempotencyKey();
+            idempotencyKeysRef.current.set(item.incident.id, idempotencyKey);
+          }
+          try {
+            request = await recoveryService.createRequest(token, {
+              incident_id: item.incident.id,
+              selected_log_id: item.candidate?.log_id || item.incident.reference_log_id || item.incident.log_id,
+              reason: reason.trim(),
+              idempotency_key: idempotencyKey,
+            });
+          } catch (createError) {
+            // A timed out HTTP response can hide a request that the Gateway
+            // already persisted. Re-read before deciding whether to retry.
+            const refreshedRequests = await recoveryService.getRequests(token);
+            const persistedRequest = latestRequestByIncident(refreshedRequests).get(item.incident.id);
+            if (!persistedRequest || !activeRequestStatuses.has(String(persistedRequest.status).toUpperCase())) {
+              throw createError;
+            }
+            request = persistedRequest;
+          }
         }
         if (String(request.status).toUpperCase() === "PENDING_EXECUTION") {
           request = await recoveryService.executeRequest(token, request.id);
@@ -177,9 +266,21 @@ export function RecoveryDrawer({ ids, incidents, requests, token, onClose, onUpd
         if (request.recovery_event_id) {
           try { event = await recoveryService.getEvent(token, request.recovery_event_id); } catch { /* Event row may be recorded after execute returns. */ }
         }
+        if (resourceKey && activeRequestStatuses.has(String(request.status).toUpperCase())) activeByResource.set(resourceKey, request);
+        else if (resourceKey) activeByResource.delete(resourceKey);
         nextResults.push({ incident: item.incident, request, event });
       } catch (executionError) {
-        nextResults.push({ incident: item.incident, error: recoveryErrorMessage(executionError) });
+        let latestRequest = request;
+        if (latestRequest?.id) {
+          try { latestRequest = await recoveryService.getRequest(token, latestRequest.id); } catch { /* Keep the known request ID for later polling. */ }
+        } else {
+          try { latestRequest = latestRequestByIncident(await recoveryService.getRequests(token)).get(item.incident.id); } catch { /* Gateway state could not be reloaded. */ }
+        }
+        const message = latestRequest
+          ? "Gateway response was interrupted. The request is shown with its last known status; refresh the workspace before retrying."
+          : `${recoveryErrorMessage(executionError)} The request may have reached the Gateway; refresh before retrying.`;
+        if (resourceKey && latestRequest && activeRequestStatuses.has(String(latestRequest.status).toUpperCase())) activeByResource.set(resourceKey, latestRequest);
+        nextResults.push({ incident: item.incident, request: latestRequest, error: message });
       }
       setResults([...nextResults]);
     }
@@ -202,33 +303,41 @@ export function RecoveryDrawer({ ids, incidents, requests, token, onClose, onUpd
         <header className="flex items-center justify-between border-b border-line px-5 py-4">
           <div>
             <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-brand-bright">{panelTitle}</div>
-            <h2 id="recovery-drawer-title" className="mt-0.5 text-[15px] font-semibold text-ink">{ids.length} incident{ids.length === 1 ? "" : "s"} · client record recovery</h2>
+            <h2 id="recovery-drawer-title" className="mt-0.5 text-[15px] font-semibold text-ink">{ids.length} incident{ids.length === 1 ? "" : "s"} · recovery review</h2>
           </div>
-          <Button ref={closeButtonRef} variant="ghost" size="icon" onClick={onClose} aria-label="Close"><X className="size-4" /></Button>
+          <Button ref={closeButtonRef} variant="ghost" size="icon" onClick={() => !working && onClose()} disabled={working} aria-label="Close"><X className="size-4" /></Button>
         </header>
 
         <div className="grid grid-cols-2 gap-px border-b border-line bg-line sm:grid-cols-3">
           <Meta label="Selected" value={`${ids.length} incidents`} />
           <Meta label="Preflight eligible" value={loading ? "Checking…" : `${readyCount} of ${preview.length}`} good={readyCount > 0} />
-          <Meta label="Recovery source" value="Verified client event" />
+          <Meta label="Recovery source" value={preview.some((item) => String(item.incident.incident_scope).toUpperCase() === "GATEWAY_INTEGRITY") ? "Client trail + anchored log" : "Verified client event"} />
         </div>
 
         {error && <div className="mx-4 mt-3 rounded-lg border border-danger/25 bg-danger/10 px-3 py-2 text-xs text-danger" role="alert">{error}</div>}
 
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
-          {loading ? <LoadingPreview /> : stage === "working" ? <RunningState /> : stage === "results" ? (
+          {loading ? <LoadingPreview /> : stage === "working" ? <RunningState message={workingMessage} /> : stage === "results" ? (
             results.map((item) => <ResultCard key={`${item.incident.id}-${item.request?.id || item.error}`} item={item} />)
           ) : (
             <>
-              {stage === "confirm" && <div className="flex items-start gap-2 rounded-lg border border-warning/35 bg-warning/10 px-3 py-2.5 text-xs text-warning"><AlertTriangle className="mt-px size-4 shrink-0" /><span>Gateway will write the selected client row through its Agent. Each item completes only after CDC and recovery evidence verification.</span></div>}
+              {stage === "confirm" && <>
+                <div className="flex items-start gap-2 rounded-lg border border-warning/35 bg-warning/10 px-3 py-2.5 text-xs text-warning"><AlertTriangle className="mt-px size-4 shrink-0" /><span>Client row recovery writes through the Agent and waits for CDC verification. Gateway integrity recovery restores audit metadata from the verified source trail.</span></div>
+                <label className="block rounded-lg border border-line bg-ground p-3.5">
+                  <span className="text-xs font-semibold text-ink">Reason for recovery</span>
+                  <span className="mt-1 block text-[10px] text-ink-faint">New requests in this batch use this reason. Resumed requests keep their original audit reason.</span>
+                  <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} required minLength={5} aria-label="Reason for recovery" aria-invalid={reason.trim().length > 0 && reason.trim().length < 5} placeholder="Explain why these client records need to be restored…" className="mt-2 w-full resize-y rounded-md border border-line-strong bg-panel px-3 py-2 text-xs text-ink outline-none placeholder:text-ink-faint focus-visible:ring-2 focus-visible:ring-brand-bright" />
+                  <span className="mt-1 block text-[10px] text-ink-faint">Enter at least 5 non-space characters.</span>
+                </label>
+              </>}
               {preview.map((item) => <PreviewCard key={item.incident.id} item={item} />)}
-              {stage === "confirm" && <div className="rounded-lg border border-line bg-ground px-3.5 py-3 text-xs text-ink-dim">{readyCount} item{readyCount === 1 ? "" : "s"} passed the latest preflight and will be processed one at a time. Other selected incidents are shown as read only.</div>}
+              {stage === "confirm" && <div className="rounded-lg border border-line bg-ground px-3.5 py-3 text-xs text-ink-dim">{readyCount} item{readyCount === 1 ? "" : "s"} passed the latest preflight and will be processed one at a time. Other selected incidents are blocked by preflight.</div>}
             </>
           )}
         </div>
 
         <footer className="flex items-center gap-2 border-t border-line px-4 py-3 sm:px-5">
-          {loading ? <Button variant="outline" disabled className="w-full"><LoaderCircle className="size-3.5 animate-spin" /> Preparing preview…</Button> : stage === "review" ? <><Button variant="outline" onClick={onClose} className="flex-1">Close</Button><Button variant="default" onClick={() => setStage("confirm")} disabled={readyCount === 0} className="flex-1">Review action <ArrowRight className="size-3.5" /></Button></> : stage === "confirm" ? <><Button variant="outline" onClick={() => setStage("review")} className="flex-1">Back</Button><Button variant="default" onClick={() => void confirmRecovery()} disabled={working || readyCount === 0} className="flex-1"><ShieldCheck className="size-3.5" /> Execute {readyCount}</Button></> : stage === "results" ? <Button variant="default" onClick={onClose} className="w-full"><Check className="size-3.5" /> Done</Button> : <Button variant="outline" disabled className="w-full"><LoaderCircle className="size-3.5 animate-spin" /> Starting recovery…</Button>}
+          {loading ? <Button variant="outline" disabled className="w-full"><LoaderCircle className="size-3.5 animate-spin" /> Preparing preview…</Button> : stage === "review" ? <><Button variant="outline" onClick={onClose} className="flex-1">Close</Button><Button variant="default" onClick={() => setStage("confirm")} disabled={readyCount === 0} className="flex-1">Review action <ArrowRight className="size-3.5" /></Button></> : stage === "confirm" ? <><Button variant="outline" onClick={() => setStage("review")} className="flex-1">Back</Button><Button variant="default" onClick={() => void confirmRecovery()} disabled={working || readyCount === 0 || reason.trim().length < 5} className="flex-1"><ShieldCheck className="size-3.5" /> Execute {readyCount}</Button></> : stage === "results" ? <Button variant="default" onClick={onClose} className="w-full"><Check className="size-3.5" /> Done</Button> : <Button variant="outline" disabled className="w-full"><LoaderCircle className="size-3.5 animate-spin" /> Starting recovery…</Button>}
         </footer>
       </section>
     </div>
@@ -238,7 +347,8 @@ export function RecoveryDrawer({ ids, incidents, requests, token, onClose, onUpd
 function PreviewCard({ item }: { item: RecoveryPreviewItem }) {
   const { incident, candidate, preflight } = item;
   const discrepancyFields = getDiscrepancyFields(incident.discrepancy_summary);
-  const trustedMetadata = preflight?.snapshot_preview?.metadata;
+  const trustedMetadata = preflight?.trusted_reference_preview?.metadata ?? preflight?.snapshot_preview?.metadata;
+  const clientSource = String(incident.incident_scope).toUpperCase() === "CLIENT_SOURCE";
   return (
     <article className="rounded-lg border border-line bg-ground p-3.5">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -248,15 +358,15 @@ function PreviewCard({ item }: { item: RecoveryPreviewItem }) {
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         <Fact label="Scope / source" value={`${formatStatus(incident.incident_scope)} · ${formatStatus(preflight?.source_status || incident.source_status || "UNKNOWN")}`} />
         <Fact label="Operation" value={preflight?.operation || candidate?.operation || "Unknown"} />
-        <Fact label="Live client state hash" value={preflight?.client_state_hash || preflight?.current_hash || incident.detected_state_hash || "Unavailable"} mono />
-        <Fact label="Trusted desired state hash" value={preflight?.desired_state_hash || preflight?.reference_log_hash || candidate?.reference_log_hash || "Unavailable"} mono />
+        <Fact label={clientSource ? "Live client state hash" : "Current audit log hash"} value={preflight?.client_state_hash || preflight?.current_hash || incident.detected_state_hash || "Unavailable"} mono />
+        <Fact label={clientSource ? "Trusted desired state hash" : "Anchored audit leaf hash"} value={preflight?.desired_state_hash || preflight?.reference_log_hash || candidate?.reference_log_hash || "Unavailable"} mono />
         <Fact label="Merkle root / anchor" value={`${shortHash(preflight?.merkle_root || candidate?.reference_merkle_root)} · ${preflight?.anchor_id || candidate?.reference_anchor_id || "No anchor"}`} mono />
       </div>
       {discrepancyFields.length > 0 && <div className="mt-3"><p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-ink-faint">Changed fields reported by gateway</p><div className="mt-1 flex flex-wrap gap-1">{discrepancyFields.map((field) => <Badge key={field} tone="warning">{field}</Badge>)}</div></div>}
       {preflight?.operation === "DELETE" && <p className="mt-3 rounded border border-warning/25 bg-warning/10 px-2.5 py-2 text-[10px] text-warning">This operation will remove the unexpected client row. It will not insert an empty record.</p>}
       {trustedMetadata !== undefined && <details className="mt-3 rounded border border-line bg-panel px-3 py-2"><summary className="cursor-pointer text-[10px] font-semibold text-ink-dim">Verified trusted reference data (redacted)</summary><pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words font-mono text-[10px] leading-relaxed text-ink-faint">{formatJson(trustedMetadata)}</pre></details>}
       {!item.ready && <p className="mt-3 text-[10px] text-warning">{item.error || "Preflight has not approved this recovery."}</p>}
-      <p className="mt-3 text-[9px] text-ink-faint">Live client values are not returned by the recovery API. This preview shows hashes and field names; it does not invent a before value.</p>
+      <p className="mt-3 text-[9px] text-ink-faint">{clientSource ? "Live client values are not returned by the recovery API. This preview shows hashes and field names." : "The Gateway will restore only audit metadata after the source event, Merkle proof, and Fabric anchor are verified."}</p>
     </article>
   );
 }
@@ -267,7 +377,7 @@ function ResultCard({ item }: { item: RecoveryExecutionItem }) {
   return (
     <article className="rounded-lg border border-line bg-ground p-3.5">
       <div className="flex flex-wrap items-start justify-between gap-2"><div><code className="break-all font-mono text-[11px] font-semibold text-ink">{item.incident.reference_log_id || item.incident.log_id}</code><p className="mt-1 text-[10px] text-ink-faint">{item.incident.resource}</p></div><Badge tone={tone}>{formatStatus(status)}</Badge></div>
-      <p className="mt-3 text-xs text-ink-dim">{item.error || statusMessage(status, item.request?.cdc_status)}</p>
+      <p className="mt-3 text-xs text-ink-dim">{item.error || statusMessage(status, item.request?.cdc_status, item.incident.incident_scope)}</p>
       {item.request?.id && <Fact label="Request ID" value={item.request.id} mono />}
       {item.request?.failure_reason && <p className="mt-2 text-[10px] text-danger">{item.request.failure_reason}</p>}
       {item.event?.recovered_metadata !== undefined && <details className="mt-3 rounded border border-line bg-panel px-3 py-2"><summary className="cursor-pointer text-[10px] font-semibold text-ink-dim">Recorded recovery result (redacted)</summary><pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words font-mono text-[10px] leading-relaxed text-ink-faint">{formatJson(item.event.recovered_metadata)}</pre></details>}
@@ -287,8 +397,12 @@ function LoadingPreview() {
   return <div className="flex min-h-64 flex-col items-center justify-center gap-3 text-xs text-ink-dim"><LoaderCircle className="size-6 animate-spin text-brand-bright" />Running read only preflight checks…</div>;
 }
 
-function RunningState() {
-  return <div className="flex min-h-64 flex-col items-center justify-center py-16 text-center"><LoaderCircle className="size-10 animate-spin text-brand-bright" /><div className="mt-4 text-sm text-ink">Starting recovery requests…</div><div className="mt-1 text-[11px] text-ink-faint">Each selected incident is processed separately.</div></div>;
+function RunningState({ message }: { message: string }) {
+  return <div className="flex min-h-64 flex-col items-center justify-center py-16 text-center"><LoaderCircle className="size-10 animate-spin text-brand-bright" /><div className="mt-4 text-sm text-ink">{message}</div><div className="mt-1 text-[11px] text-ink-faint">Each selected incident is processed separately.</div></div>;
+}
+
+function wait(duration: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, duration));
 }
 
 function getDiscrepancyFields(value?: string | Array<{ field?: string; changed?: boolean }>) {
@@ -325,8 +439,10 @@ function friendlyReason(value: string) {
   return messages[value] || value;
 }
 
-function statusMessage(status: string, cdcStatus?: string) {
-  if (status === "SUCCEEDED") return "CDC, recovery event integrity, and Fabric anchoring are verified.";
+function statusMessage(status: string, cdcStatus?: string, scope?: string) {
+  if (status === "SUCCEEDED") return scope === "GATEWAY_INTEGRITY"
+    ? "Audit metadata was restored from the verified source event. Its recovery event is recorded for evidence processing."
+    : "CDC, recovery event integrity, and Fabric anchoring are verified.";
   if (status === "PENDING_EXECUTION") return "Recovery is queued and can be resumed from this workspace.";
   if (status === "EXECUTING") return "The gateway is processing this recovery request.";
   if (status === "APPLIED_AWAITING_CDC") return `The Agent applied the client write. Waiting for CDC and event verification${cdcStatus ? ` (${formatStatus(cdcStatus)})` : ""}.`;
