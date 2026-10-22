@@ -6,6 +6,7 @@ umask 077
 readonly expected_deploy_dir="${HOME:?HOME is required}/auditchain/client-portal"
 readonly deploy_dir="${DASHBOARD_PROJECT_DIR:?DASHBOARD_PROJECT_DIR is required}"
 readonly dashboard_bind_address="${MINIPC_TAILSCALE_IP:?MINIPC_TAILSCALE_IP is required}"
+readonly dashboard_lan_bind_address="${MINIPC_LAN_IP:?MINIPC_LAN_IP is required}"
 readonly dashboard_port="${MINIPC_CLIENT_PORT:?MINIPC_CLIENT_PORT is required}"
 readonly dashboard_url="${MINIPC_CLIENT_URL:?MINIPC_CLIENT_URL is required}"
 readonly api_upstream="${MINIPC_GATEWAY_API_URL:?MINIPC_GATEWAY_API_URL is required}"
@@ -26,17 +27,31 @@ validate_port() {
   (( number >= 1 && number <= 65535 ))
 }
 
-if [[ ! "$dashboard_bind_address" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-  printf '%s\n' "MINIPC_TAILSCALE_IP must be an IPv4 address." >&2
+validate_ipv4() {
+  local name="$1"
+  local address="$2"
+  local octet
+  local -a octets=()
+
+  if [[ ! "$address" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    printf '%s must be an IPv4 address.\n' "$name" >&2
+    return 1
+  fi
+  IFS=. read -r -a octets <<< "$address"
+  for octet in "${octets[@]}"; do
+    if (( 10#$octet > 255 )); then
+      printf '%s contains an invalid IPv4 octet.\n' "$name" >&2
+      return 1
+    fi
+  done
+}
+
+validate_ipv4 MINIPC_TAILSCALE_IP "$dashboard_bind_address"
+validate_ipv4 MINIPC_LAN_IP "$dashboard_lan_bind_address"
+if [[ "$dashboard_bind_address" == "$dashboard_lan_bind_address" ]]; then
+  printf '%s\n' "MINIPC_LAN_IP and MINIPC_TAILSCALE_IP must be different addresses." >&2
   exit 1
 fi
-IFS=. read -r -a address_octets <<< "$dashboard_bind_address"
-for address_octet in "${address_octets[@]}"; do
-  if (( 10#$address_octet > 255 )); then
-    printf '%s\n' "MINIPC_TAILSCALE_IP contains an invalid IPv4 octet." >&2
-    exit 1
-  fi
-done
 
 if ! validate_port "$dashboard_port" || ! validate_port "$client_container_port" || \
   (( 10#$client_container_port < 1024 )); then
@@ -113,17 +128,20 @@ readonly project_name="auditchain-client-minipc"
 readonly compose_options=(--project-name "$project_name" --project-directory "$deploy_dir" --file "$compose_file")
 readonly port_filter="publish=$dashboard_port"
 readonly health_url="${dashboard_url%/}/healthz"
+readonly lan_health_url="http://${dashboard_lan_bind_address}:${dashboard_port}/healthz"
 
 wait_for_dashboard_health() {
   local attempt
   for attempt in {1..30}; do
-    if curl --connect-timeout 2 --fail --silent --output /dev/null --max-time 5 "$health_url"; then
+    if curl --connect-timeout 2 --fail --silent --output /dev/null --max-time 5 "$health_url" && \
+      curl --connect-timeout 2 --fail --silent --output /dev/null --max-time 5 "$lan_health_url"; then
       return 0
     fi
     sleep 2
   done
 
-  printf 'Dashboard health endpoint did not become ready: %s\n' "$health_url" >&2
+  printf 'Dashboard health endpoint did not become ready on both interfaces: %s and %s\n' \
+    "$health_url" "$lan_health_url" >&2
   return 1
 }
 
@@ -135,7 +153,8 @@ legacy_project_label=""
 inspect_existing_portal() {
   local container_ids_output container_id container_name container_image container_status
   local project_label service_label config_files_label working_dir_label port_bindings
-  local container_port host_ip host_port exact_binding unexpected_binding binding_count matching_containers=0
+  local container_port host_ip host_port unexpected_binding binding_count matching_containers=0
+  local new_bindings_complete old_binding_only
   local -a container_ids=()
 
   if ! container_ids_output="$(docker ps --quiet --filter "$port_filter")"; then
@@ -156,22 +175,35 @@ inspect_existing_portal() {
     working_dir_label="$(docker inspect --format '{{with index .Config.Labels "com.docker.compose.project.working_dir"}}{{.}}{{end}}' "$container_id")"
     port_bindings="$(docker inspect --format '{{range $port, $bindings := .NetworkSettings.Ports}}{{range $bindings}}{{printf "%s|%s|%s\n" $port .HostIp .HostPort}}{{end}}{{end}}' "$container_id")"
 
-    exact_binding=false
+    tailscale_binding_found=false
+    lan_binding_found=false
     unexpected_binding=false
     binding_count=0
     while IFS='|' read -r container_port host_ip host_port; do
       [[ -n "$container_port" ]] || continue
       binding_count=$((binding_count + 1))
-      if [[ "$container_port" == "${client_container_port}/tcp" && "$host_ip" == "$dashboard_bind_address" && "$host_port" == "$dashboard_port" ]]; then
-        exact_binding=true
+      if [[ "$container_port" == "${client_container_port}/tcp" && "$host_ip" == "$dashboard_bind_address" && "$host_port" == "$dashboard_port" && "$tailscale_binding_found" == false ]]; then
+        tailscale_binding_found=true
+      elif [[ "$container_port" == "${client_container_port}/tcp" && "$host_ip" == "$dashboard_lan_bind_address" && "$host_port" == "$dashboard_port" && "$lan_binding_found" == false ]]; then
+        lan_binding_found=true
       else
         unexpected_binding=true
       fi
     done <<< "$port_bindings"
 
-    if [[ "$exact_binding" != true || "$unexpected_binding" == true || "$binding_count" -ne 1 ]]; then
-      printf 'Container %s (%s) does not have only the expected %s:%s to %s binding; refusing to continue.\n' \
-        "$container_id" "$container_name" "$dashboard_bind_address" "$dashboard_port" "$client_container_port" >&2
+    new_bindings_complete=false
+    old_binding_only=false
+    if [[ "$tailscale_binding_found" == true && "$lan_binding_found" == true && \
+      "$binding_count" -eq 2 ]]; then
+      new_bindings_complete=true
+    elif [[ "$tailscale_binding_found" == true && "$binding_count" -eq 1 ]]; then
+      old_binding_only=true
+    fi
+
+    if [[ "$unexpected_binding" == true || ( "$new_bindings_complete" != true && "$old_binding_only" != true ) ]]; then
+      printf 'Container %s (%s) must use only the explicit Tailscale and LAN bindings %s:%s and %s:%s to %s; refusing to continue.\n' \
+        "$container_id" "$container_name" "$dashboard_bind_address" "$dashboard_port" \
+        "$dashboard_lan_bind_address" "$dashboard_port" "$client_container_port" >&2
       return 1
     fi
 
@@ -375,8 +407,8 @@ if [[ -f "$env_file" && -f "$compose_file" ]]; then
 fi
 
 cp -- "$DEPLOY_PACKAGE_DIR/compose-minipc.yaml" "$new_compose_file"
-printf 'CLIENT_IMAGE=%s\nMINIPC_TAILSCALE_IP=%s\nMINIPC_CLIENT_PORT=%s\nMINIPC_CLIENT_URL=%s\nMINIPC_GATEWAY_API_URL=%s\nBESU_ADMIN_PORTAL_URL=%s\nCLIENT_CONTAINER_PORT=%s\nCONTAINER_REGISTRY=%s\n' \
-  "$image_ref" "$dashboard_bind_address" "$dashboard_port" "$dashboard_url" "$api_upstream" \
+printf 'CLIENT_IMAGE=%s\nMINIPC_TAILSCALE_IP=%s\nMINIPC_LAN_IP=%s\nMINIPC_CLIENT_PORT=%s\nMINIPC_CLIENT_URL=%s\nMINIPC_GATEWAY_API_URL=%s\nBESU_ADMIN_PORTAL_URL=%s\nCLIENT_CONTAINER_PORT=%s\nCONTAINER_REGISTRY=%s\n' \
+  "$image_ref" "$dashboard_bind_address" "$dashboard_lan_bind_address" "$dashboard_port" "$dashboard_url" "$api_upstream" \
   "$admin_portal_url" "$client_container_port" "$container_registry" > "$new_env_file"
 
 if ! "${compose_cmd[@]}" "${staged_compose_options[@]}" config --quiet; then

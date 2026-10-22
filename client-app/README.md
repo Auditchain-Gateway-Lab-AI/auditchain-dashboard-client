@@ -23,17 +23,18 @@ The login flow calls `POST /auth/login`, validates the returned token with `GET 
 
 The GitHub Actions workflow `../.github/workflows/deploy-client.yml` deploys automatically whenever a commit is pushed or merged into `main`. It first runs client CI, validates the `development` environment configuration, publishes a commit-tagged image, and deploys the exact published image digest to the Mini PC over Tailscale SSH. There is no manual **Run workflow** step. The workflow uses the commit that entered `main`; a failed CI check or missing required variable prevents deployment.
 
-The workflow reads the client address and Gateway API upstream from GitHub Actions Variables in the `development` environment. It builds `VITE_GATEWAY_PORTAL_URL` from `BESU_ADMIN_PORTAL_URL`, which keeps the admin link on Besu. The workflow and Mini PC deployment script do not target either Besu portal. The Besu client Compose file and manual deployment script remain a separate backup path.
+The workflow reads the client addresses and Gateway API upstream from GitHub Actions Variables in the `development` environment. It binds the client portal explicitly to both the Mini PC Tailscale IP and LAN IP, so it is reachable at both URLs without exposing the port on every host interface. It builds `VITE_GATEWAY_PORTAL_URL` from `BESU_ADMIN_PORTAL_URL`, which keeps the admin link on Besu. The workflow and Mini PC deployment script do not target either Besu portal. The Besu client Compose file and manual deployment script remain a separate backup path.
 
-Before changing containers, the deployment script validates the configuration and Gateway API, inspects every running container publishing the configured client port, and checks its Compose project, service, container name, image, config file, and exact address/port binding. Unknown or ambiguous containers cause a fail-closed stop. For the recognized legacy client container, the script pulls and validates the new image first, then stops the old container. If startup or health checks fail, it removes the new release and restarts the previous container. After success, the old container remains stopped and available for rollback.
+Before changing containers, the deployment script validates the configuration and Gateway API, inspects every running container publishing the configured client port, and checks its Compose project, service, container name, image, config file, and address/port bindings. It accepts either the exact two new bindings or the recognized previous Tailscale-only binding for a safe transition; other or ambiguous containers cause a fail-closed stop. The new release must pass `/healthz` checks over both LAN and Tailscale. For the recognized legacy client container, the script pulls and validates the new image first, then stops the old container. If startup or health checks fail, it removes the new release and restarts the previous container. After success, the old container remains stopped and available for rollback.
 
 Create a GitHub Environment named `development`, then define the following Actions Variables. The workflow and build validate required values before remote access or container changes. For unattended automatic releases, environment rules must not require manual approval or a wait timer.
 
 | Variable | Purpose |
 | --- | --- |
-| `MINIPC_TAILSCALE_IP` | Mini PC Tailscale IPv4 address used by Tailscale, SSH, and the client bind address. |
+| `MINIPC_TAILSCALE_IP` | Mini PC Tailscale IPv4 address used by Tailscale SSH and one explicit client bind address. |
+| `MINIPC_LAN_IP` | Mini PC LAN IPv4 address used as the second explicit client bind address (for example, `192.168.60.65`). Keep this address reserved in DHCP or static so it does not change unexpectedly. |
 | `MINIPC_CLIENT_PORT` | Host port for the client portal. |
-| `MINIPC_CLIENT_URL` | Client URL. It must match `http://${MINIPC_TAILSCALE_IP}:${MINIPC_CLIENT_PORT}`. |
+| `MINIPC_CLIENT_URL` | Tailscale client URL used by deployment health checks. It must match `http://${MINIPC_TAILSCALE_IP}:${MINIPC_CLIENT_PORT}`. LAN clients can use `http://${MINIPC_LAN_IP}:${MINIPC_CLIENT_PORT}`. |
 | `MINIPC_GATEWAY_API_URL` | Mini PC Gateway API origin, without a path. |
 | `MINIPC_LEGACY_COMPOSE_DIR` | Exact `com.docker.compose.project.working_dir` label from `docker inspect` for the currently running legacy portal container. |
 | `BESU_ADMIN_PORTAL_URL` | Besu admin portal URL embedded as the client portal link. |

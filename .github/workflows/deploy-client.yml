@@ -73,6 +73,7 @@ jobs:
         id: config
         env:
           MINIPC_TAILSCALE_IP: ${{ vars.MINIPC_TAILSCALE_IP }}
+          MINIPC_LAN_IP: ${{ vars.MINIPC_LAN_IP }}
           MINIPC_CLIENT_PORT: ${{ vars.MINIPC_CLIENT_PORT }}
           MINIPC_CLIENT_URL: ${{ vars.MINIPC_CLIENT_URL }}
           MINIPC_GATEWAY_API_URL: ${{ vars.MINIPC_GATEWAY_API_URL }}
@@ -138,6 +139,7 @@ jobs:
       - name: Validate required variables and secrets before remote access
         env:
           MINIPC_TAILSCALE_IP: ${{ vars.MINIPC_TAILSCALE_IP }}
+          MINIPC_LAN_IP: ${{ vars.MINIPC_LAN_IP }}
           MINIPC_CLIENT_PORT: ${{ vars.MINIPC_CLIENT_PORT }}
           MINIPC_CLIENT_URL: ${{ vars.MINIPC_CLIENT_URL }}
           MINIPC_GATEWAY_API_URL: ${{ vars.MINIPC_GATEWAY_API_URL }}
@@ -198,6 +200,7 @@ jobs:
           REGISTRY_USERNAME: ${{ github.actor }}
           CONTAINER_REGISTRY: ${{ vars.CONTAINER_REGISTRY }}
           MINIPC_TAILSCALE_IP: ${{ vars.MINIPC_TAILSCALE_IP }}
+          MINIPC_LAN_IP: ${{ vars.MINIPC_LAN_IP }}
           MINIPC_CLIENT_PORT: ${{ vars.MINIPC_CLIENT_PORT }}
           MINIPC_CLIENT_URL: ${{ vars.MINIPC_CLIENT_URL }}
           MINIPC_GATEWAY_API_URL: ${{ vars.MINIPC_GATEWAY_API_URL }}
@@ -215,7 +218,7 @@ jobs:
           port: ${{ vars.MINIPC_SSH_PORT }}
           password: ${{ secrets.MINIPC_SSH_PASSWORD }}
           fingerprint: ${{ secrets.MINIPC_SSH_HOST_FINGERPRINT }}
-          envs: BUNDLE_NAME,REGISTRY_READ_TOKEN,REGISTRY_USERNAME,CONTAINER_REGISTRY,MINIPC_TAILSCALE_IP,MINIPC_CLIENT_PORT,MINIPC_CLIENT_URL,MINIPC_GATEWAY_API_URL,MINIPC_LEGACY_COMPOSE_DIR,BESU_ADMIN_PORTAL_URL,CLIENT_CONTAINER_PORT,CLIENT_IMAGE_NAME,CLIENT_IMAGE_SHA,CLIENT_IMAGE_DIGEST,CLIENT_IMAGE_REF,GITHUB_RUN_ID
+          envs: BUNDLE_NAME,REGISTRY_READ_TOKEN,REGISTRY_USERNAME,CONTAINER_REGISTRY,MINIPC_TAILSCALE_IP,MINIPC_LAN_IP,MINIPC_CLIENT_PORT,MINIPC_CLIENT_URL,MINIPC_GATEWAY_API_URL,MINIPC_LEGACY_COMPOSE_DIR,BESU_ADMIN_PORTAL_URL,CLIENT_CONTAINER_PORT,CLIENT_IMAGE_NAME,CLIENT_IMAGE_SHA,CLIENT_IMAGE_DIGEST,CLIENT_IMAGE_REF,GITHUB_RUN_ID
           command_timeout: 15m
           script: |
             set -eu
@@ -233,7 +236,7 @@ jobs:
 
             export DEPLOY_PACKAGE_DIR="$package_dir"
             export DASHBOARD_PROJECT_DIR="${HOME}/auditchain/client-portal"
-            export MINIPC_TAILSCALE_IP MINIPC_CLIENT_PORT MINIPC_CLIENT_URL MINIPC_GATEWAY_API_URL MINIPC_LEGACY_COMPOSE_DIR
+            export MINIPC_TAILSCALE_IP MINIPC_LAN_IP MINIPC_CLIENT_PORT MINIPC_CLIENT_URL MINIPC_GATEWAY_API_URL MINIPC_LEGACY_COMPOSE_DIR
             export BESU_ADMIN_PORTAL_URL CLIENT_CONTAINER_PORT CONTAINER_REGISTRY
             export CLIENT_IMAGE_NAME CLIENT_IMAGE_SHA CLIENT_IMAGE_DIGEST CLIENT_IMAGE_REF
             export REGISTRY_USERNAME REGISTRY_READ_TOKEN GITHUB_RUN_ID
@@ -242,6 +245,8 @@ jobs:
       - name: Record deployed release
         env:
           MINIPC_CLIENT_URL: ${{ vars.MINIPC_CLIENT_URL }}
+          MINIPC_LAN_IP: ${{ vars.MINIPC_LAN_IP }}
+          MINIPC_CLIENT_PORT: ${{ vars.MINIPC_CLIENT_PORT }}
           CLIENT_IMAGE_NAME: ${{ needs.publish.outputs.image_name }}
           CLIENT_IMAGE_SHA: ${{ needs.validate.outputs.image_sha }}
           CLIENT_IMAGE_DIGEST: ${{ needs.publish.outputs.image_digest }}
@@ -252,6 +257,7 @@ jobs:
             echo "- Result: successful; the remote script passed dashboard health and Gateway API connectivity checks."
             echo "- Image: \`$CLIENT_IMAGE_NAME@$CLIENT_IMAGE_DIGEST\` (source commit \`$CLIENT_IMAGE_SHA\`)"
             echo "- Dashboard: $MINIPC_CLIENT_URL"
+            echo "- Dashboard on LAN: http://${MINIPC_LAN_IP}:${MINIPC_CLIENT_PORT}"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove local deployment bundle

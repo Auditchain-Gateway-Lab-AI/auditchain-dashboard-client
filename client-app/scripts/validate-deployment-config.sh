@@ -62,6 +62,7 @@ case "$mode" in
   deploy)
     require_variables \
       MINIPC_TAILSCALE_IP \
+      MINIPC_LAN_IP \
       MINIPC_CLIENT_PORT \
       MINIPC_CLIENT_URL \
       MINIPC_GATEWAY_API_URL \
@@ -73,6 +74,9 @@ case "$mode" in
       MINIPC_SSH_PORT
 
     validate_ipv4 MINIPC_TAILSCALE_IP
+    validate_ipv4 MINIPC_LAN_IP
+    [[ "$MINIPC_LAN_IP" != "$MINIPC_TAILSCALE_IP" ]] || \
+      fail "MINIPC_LAN_IP and MINIPC_TAILSCALE_IP must be different addresses."
     validate_port MINIPC_CLIENT_PORT
     validate_container_port
     validate_port MINIPC_SSH_PORT
