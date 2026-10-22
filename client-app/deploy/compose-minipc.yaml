@@ -1,5 +1,6 @@
 x-minipc-deployment-settings:
   client_url: ${MINIPC_CLIENT_URL:?MINIPC_CLIENT_URL is required}
+  client_lan_url: http://${MINIPC_LAN_IP:?MINIPC_LAN_IP is required}:${MINIPC_CLIENT_PORT:?MINIPC_CLIENT_PORT is required}
   gateway_api_url: ${MINIPC_GATEWAY_API_URL:?MINIPC_GATEWAY_API_URL is required}
   besu_admin_portal_url: ${BESU_ADMIN_PORTAL_URL:?BESU_ADMIN_PORTAL_URL is required}
   container_registry: ${CONTAINER_REGISTRY:?CONTAINER_REGISTRY is required}
@@ -11,6 +12,7 @@ services:
     restart: unless-stopped
     ports:
       - "${MINIPC_TAILSCALE_IP:?MINIPC_TAILSCALE_IP is required}:${MINIPC_CLIENT_PORT:?MINIPC_CLIENT_PORT is required}:${CLIENT_CONTAINER_PORT:?CLIENT_CONTAINER_PORT is required}"
+      - "${MINIPC_LAN_IP:?MINIPC_LAN_IP is required}:${MINIPC_CLIENT_PORT:?MINIPC_CLIENT_PORT is required}:${CLIENT_CONTAINER_PORT:?CLIENT_CONTAINER_PORT is required}"
     environment:
       AUDITCHAIN_API_UPSTREAM: ${MINIPC_GATEWAY_API_URL:?MINIPC_GATEWAY_API_URL is required}
     read_only: true
