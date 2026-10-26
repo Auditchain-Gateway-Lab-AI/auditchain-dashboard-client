@@ -2,7 +2,10 @@ import { apiClient } from "@/services/api/client";
 import type { ClientWorkspace } from "@/types/auth";
 import type {
   AuditAction,
+  BackgroundWorkerStatus,
   DashboardOverview,
+  IntegrityDimension,
+  IntegrityHistory,
   TableInventoryItem,
   TableVerificationSummary,
   TrendPoint,
@@ -40,6 +43,16 @@ interface DashboardStatsData {
     checked_logs?: number;
   };
   table_verify_results?: Record<string, Record<string, unknown>> | null;
+  integrity_totals?: {
+    total?: number;
+    valid?: number;
+    tampered?: number;
+    pending?: number;
+    unavailable?: number;
+    not_checked?: number;
+    checked_at?: string | null;
+    checks_90d?: number;
+  };
   trend?: {
     range?: TrendRange;
     points?: Array<{
@@ -47,6 +60,7 @@ interface DashboardStatsData {
       total_logs?: number;
       valid?: number;
       tampered?: number;
+      source_tampered?: number;
       pending?: number;
       unavailable?: number;
       not_checked?: number;
@@ -55,6 +69,37 @@ interface DashboardStatsData {
       delete?: number;
     }>;
   };
+}
+
+interface BackendIntegrityHistory {
+  range?: TrendRange;
+  dimension?: IntegrityDimension;
+  available_from?: string | null;
+  generated_at?: string;
+  points?: Array<{
+    bucket_start?: string;
+    checked?: number;
+    valid?: number;
+    tampered?: number;
+    pending?: number;
+    unavailable?: number;
+    limited?: number;
+    not_comparable?: number;
+  }>;
+}
+
+interface BackendWorkerStatusResponse {
+  workers?: Array<{
+    worker?: string;
+    enabled?: boolean;
+    healthy?: boolean;
+    last_heartbeat_at?: string | null;
+    last_check_at?: string | null;
+    last_checked_items?: number;
+    queued_items?: number;
+    scope?: string;
+    last_error?: string;
+  }>;
 }
 
 interface DashboardStatsResponse {
@@ -190,8 +235,8 @@ function formatTrendLabel(value: string, range: TrendRange) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   const options: Intl.DateTimeFormatOptions = range === "7D" || range === "30D"
-    ? { day: "2-digit", month: "short" }
-    : { hour: "2-digit", minute: "2-digit", hour12: false };
+    ? { day: "2-digit", month: "short", timeZone: "Asia/Jakarta" }
+    : { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Jakarta" };
   return new Intl.DateTimeFormat("en-GB", options).format(date);
 }
 
@@ -266,10 +311,12 @@ export class ApiDashboardService {
     const totalLogs = asNumber(data.total_logs ?? response.total_logs);
     const anchoredLogs = asNumber(data.anchored_logs ?? data.total_anchored ?? response.anchored_logs);
     const pendingLogs = asNumber(data.pending_logs ?? data.total_pending ?? response.pending_logs);
-    const valid = asNumber(data.total_valid);
-    const tampered = asNumber(data.total_tampered);
-    const totalVerifications = asNumber(data.total_verifications);
-    const verificationDenominator = totalVerifications || valid + tampered;
+    const valid = asNumber(data.integrity_totals?.valid ?? data.total_valid);
+    const tampered = asNumber(data.integrity_totals?.tampered ?? data.total_tampered);
+    const totalVerifications = asNumber(data.integrity_totals?.checks_90d ?? data.total_verifications);
+    const verificationPending = asNumber(data.integrity_totals?.pending ?? data.total_verify_pending);
+    const verificationUnavailable = asNumber(data.integrity_totals?.unavailable ?? (asNumber(data.total_agent_error) + asNumber(data.total_fabric_error)));
+    const verificationDenominator = valid + tampered + verificationPending + verificationUnavailable;
 
     return {
       tenant: workspace?.name || data.client_id || "Client workspace",
@@ -278,17 +325,18 @@ export class ApiDashboardService {
       anchoredLogs,
       pendingLogs,
       anchorPercentage: asNumber(data.anchor_percentage),
-      integrityScore: verificationDenominator > 0 ? asOptionalNumber(data.integrity_score) : null,
+      integrityScore: verificationDenominator > 0 ? (valid / verificationDenominator) * 100 : null,
       totalVerifications,
+      totalVerificationsIsLegacy: data.integrity_totals?.checks_90d === undefined,
       valid,
       validPercentage: verificationDenominator > 0 ? (valid / verificationDenominator) * 100 : 0,
       tampered,
       tamperedPercentage: verificationDenominator > 0 ? (tampered / verificationDenominator) * 100 : 0,
       logsToday: asNumber(data.logs_today),
       monitoredTables: asOptionalNumber(data.total_tables_audited),
-      lastScan: formatDateTime(data.last_verified_at),
-      verificationPending: asNumber(data.total_verify_pending),
-      verificationUnavailable: asNumber(data.total_agent_error) + asNumber(data.total_fabric_error),
+      lastScan: formatDateTime(data.integrity_totals?.checked_at || data.last_verified_at),
+      verificationPending,
+      verificationUnavailable,
       rowsVerified: asNumber(data.total_rows_verified),
       tableVerification: mapTableVerification(data.table_verify_results),
       latestIntegrityCheck: {
@@ -296,6 +344,15 @@ export class ApiDashboardService {
         checkedAt: data.integrity_check?.checked_at ? formatDateTime(data.integrity_check.checked_at) : null,
         checkedLogs: asNumber(data.integrity_check?.checked_logs),
         runId: data.integrity_check?.run_id || undefined,
+      },
+      currentIntegrity: {
+        total: asNumber(data.integrity_totals?.total ?? totalLogs),
+        valid,
+        tampered,
+        pending: verificationPending,
+        unavailable: verificationUnavailable,
+        notChecked: asNumber(data.integrity_totals?.not_checked),
+        checkedAt: data.integrity_totals?.checked_at || null,
       },
     };
   }
@@ -311,12 +368,51 @@ export class ApiDashboardService {
       totalLogs: asNumber(point.total_logs),
       valid: asNumber(point.valid),
       tampered: asNumber(point.tampered),
+      sourceTampered: asNumber(point.source_tampered),
       pending: asNumber(point.pending),
       unavailable: asNumber(point.unavailable),
       notChecked: asNumber(point.not_checked),
       insert: asNumber(point.insert),
       update: asNumber(point.update),
       delete: asNumber(point.delete),
+    }));
+  }
+
+  async getIntegrityHistory(range: TrendRange, dimension: IntegrityDimension, token?: string): Promise<IntegrityHistory> {
+    if (!token) throw new Error("Session client tidak tersedia.");
+    const params = new URLSearchParams({ range, dimension });
+    const response = await apiClient.get<BackendIntegrityHistory>(`/dashboard/integrity-history?${params.toString()}`, token);
+    return {
+      range: response.range || range,
+      dimension: response.dimension || dimension,
+      availableFrom: response.available_from || null,
+      generatedAt: response.generated_at || new Date().toISOString(),
+      points: (response.points || []).map((point) => ({
+        label: formatTrendLabel(point.bucket_start || "", range),
+        checked: asNumber(point.checked),
+        valid: asNumber(point.valid),
+        tampered: asNumber(point.tampered),
+        pending: asNumber(point.pending),
+        unavailable: asNumber(point.unavailable),
+        limited: asNumber(point.limited),
+        notComparable: asNumber(point.not_comparable),
+      })),
+    };
+  }
+
+  async getWorkerStatus(token?: string): Promise<BackgroundWorkerStatus[]> {
+    if (!token) throw new Error("Session client tidak tersedia.");
+    const response = await apiClient.get<BackendWorkerStatusResponse>("/dashboard/worker-status", token);
+    return (response.workers || []).map((worker) => ({
+      worker: worker.worker || "UNKNOWN",
+      enabled: worker.enabled === true,
+      healthy: worker.healthy === true,
+      lastHeartbeatAt: worker.last_heartbeat_at || null,
+      lastCheckAt: worker.last_check_at || null,
+      lastCheckedItems: asNumber(worker.last_checked_items),
+      queuedItems: asNumber(worker.queued_items),
+      scope: worker.scope || "",
+      lastError: worker.last_error,
     }));
   }
 
@@ -387,6 +483,13 @@ export class ApiDashboardService {
         verifiedNow: asNumber(summary.verified_now),
       },
     };
+  }
+
+  async startVerificationRun(token: string | undefined, range: VerificationRangeInput): Promise<VerificationRun> {
+    if (!token) throw new Error("Session client tidak tersedia.");
+    const response = await apiClient.post<BackendVerificationRunResponse>("/dashboard/verification-runs", range, token);
+    if (!response.data?.id) throw new Error("Gateway tidak mengembalikan ID verifikasi.");
+    return mapVerificationRun(response.data);
   }
 }
 

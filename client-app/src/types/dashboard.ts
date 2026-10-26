@@ -1,5 +1,6 @@
 export type TrendRange = "8H" | "24H" | "7D" | "30D";
 export type TrendTab = "INTEGRITY" | "ACTIVITY";
+export type IntegrityDimension = "proof" | "source";
 export type ActivityLevel = "VERY HIGH" | "HIGH" | "NORMAL" | "LOW" | "IDLE";
 export type AuditAction = "INSERT" | "UPDATE" | "DELETE" | "OTHER";
 
@@ -12,6 +13,7 @@ export interface DashboardOverview {
   anchorPercentage: number;
   integrityScore: number | null;
   totalVerifications: number;
+  totalVerificationsIsLegacy?: boolean;
   valid: number;
   validPercentage: number;
   tampered: number;
@@ -24,6 +26,17 @@ export interface DashboardOverview {
   rowsVerified?: number;
   tableVerification?: Record<string, TableVerificationSummary>;
   latestIntegrityCheck?: IntegrityCheckSummary;
+  currentIntegrity?: CurrentIntegritySummary;
+}
+
+export interface CurrentIntegritySummary {
+  total: number;
+  valid: number;
+  tampered: number;
+  pending: number;
+  unavailable: number;
+  notChecked: number;
+  checkedAt: string | null;
 }
 
 export interface IntegrityCheckSummary {
@@ -113,12 +126,44 @@ export interface TrendPoint {
   totalLogs: number;
   valid: number;
   tampered: number;
+  sourceTampered: number;
   pending: number;
   unavailable: number;
   notChecked: number;
   insert: number;
   update: number;
   delete: number;
+}
+
+export interface IntegrityHistoryPoint {
+  label: string;
+  checked: number;
+  valid: number;
+  tampered: number;
+  pending: number;
+  unavailable: number;
+  limited: number;
+  notComparable: number;
+}
+
+export interface IntegrityHistory {
+  range: TrendRange;
+  dimension: IntegrityDimension;
+  availableFrom: string | null;
+  generatedAt: string;
+  points: IntegrityHistoryPoint[];
+}
+
+export interface BackgroundWorkerStatus {
+  worker: string;
+  enabled: boolean;
+  healthy: boolean;
+  lastHeartbeatAt: string | null;
+  lastCheckAt: string | null;
+  lastCheckedItems: number;
+  queuedItems: number;
+  scope: string;
+  lastError?: string;
 }
 
 export interface LatestAuditScan {

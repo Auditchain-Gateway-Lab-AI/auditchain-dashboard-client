@@ -3,12 +3,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { dashboardMockEnabled, dashboardService } from "@/services/dashboard";
 import { useAuth } from "@/hooks/useAuth";
-import type { TrendRange, VerificationRangeInput } from "@/types/dashboard";
+import type { IntegrityDimension, TrendRange, VerificationRangeInput } from "@/types/dashboard";
 
 const activeVerificationPollMs = 3_000;
 const idleVerificationPollMs = 30_000;
 export const liveDashboardRefreshMs = 30_000;
-const integrityTrendRefreshMs = 60_000;
+const integrityTrendRefreshMs = liveDashboardRefreshMs;
 
 export const dashboardKeys = {
   all: ["dashboard"] as const,
@@ -20,6 +20,8 @@ export const dashboardKeys = {
   insights: ["dashboard", "insights"] as const,
   issues: ["dashboard", "issues"] as const,
   trend: (range: TrendRange) => ["dashboard", "trend", range] as const,
+  integrityHistory: (range: TrendRange, dimension: IntegrityDimension) => ["dashboard", "integrity-history", range, dimension] as const,
+  workerStatus: ["dashboard", "worker-status"] as const,
 };
 
 export function useDashboardData() {
@@ -32,7 +34,7 @@ export function useDashboardData() {
     queryFn: () => dashboardService.getOverview(session?.token, session?.user.workspace),
     enabled: hasSession,
     refetchInterval: liveDashboardRefreshMs,
-    refetchIntervalInBackground: true,
+    refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
   });
@@ -42,7 +44,7 @@ export function useDashboardData() {
     queryFn: () => dashboardService.getInventory(session?.token),
     enabled: !dashboardMockEnabled && hasSession,
     refetchInterval: liveDashboardRefreshMs,
-    refetchIntervalInBackground: true,
+    refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
   });
@@ -55,10 +57,20 @@ export function useDashboardData() {
       const status = query.state.data?.status;
       return status === "QUEUED" || status === "RUNNING" ? activeVerificationPollMs : idleVerificationPollMs;
     },
+    refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
   });
   const insights = useQuery({ queryKey: dashboardKeys.insights, queryFn: () => dashboardService.getTableInsights(), enabled: dashboardMockEnabled && hasSession });
   const issues = useQuery({ queryKey: dashboardKeys.issues, queryFn: () => dashboardService.getIssues(), enabled: dashboardMockEnabled && hasSession });
+  const workerStatus = useQuery({
+    queryKey: dashboardKeys.workerStatus,
+    queryFn: () => dashboardService.getWorkerStatus(session?.token),
+    enabled: hasSession,
+    refetchInterval: dashboardMockEnabled ? false : liveDashboardRefreshMs,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+  });
 
   const observedRunRef = useRef<string | null>(null);
   useEffect(() => {
@@ -76,22 +88,26 @@ export function useDashboardData() {
       queryClient.invalidateQueries({ queryKey: dashboardKeys.overview }),
       queryClient.invalidateQueries({ queryKey: dashboardKeys.inventory }),
       queryClient.invalidateQueries({ queryKey: ["dashboard", "trend"] }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard", "integrity-history"] }),
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.workerStatus }),
+      queryClient.invalidateQueries({ queryKey: ["recovery"] }),
     ]);
   }, [queryClient, verificationRun.data]);
 
   const queries = dashboardMockEnabled
     ? [overview, tables, latestScan, insights, issues]
-    : [overview, inventory, verificationRun];
+    : [overview, inventory];
   return {
     overview,
     tables,
     inventory,
     latestScan,
     verificationRun,
+    workerStatus,
     insights,
     issues,
     isInitialLoading: queries.some((query) => query.isPending),
-    isError: queries.some((query) => query.isError),
+    isError: dashboardMockEnabled ? queries.some((query) => query.isError) : overview.isError || inventory.isError,
     isFetching: queries.some((query) => query.isFetching),
   };
 }
@@ -103,6 +119,20 @@ export function useIntegrityTrend(range: TrendRange) {
     queryFn: () => dashboardService.getIntegrityTrend(range, session?.token),
     enabled: dashboardMockEnabled || Boolean(session?.token),
     refetchInterval: dashboardMockEnabled ? false : integrityTrendRefreshMs,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+  });
+}
+
+export function useIntegrityHistory(range: TrendRange, dimension: IntegrityDimension) {
+  const { session } = useAuth();
+  return useQuery({
+    queryKey: dashboardKeys.integrityHistory(range, dimension),
+    queryFn: () => dashboardService.getIntegrityHistory(range, dimension, session?.token),
+    enabled: dashboardMockEnabled || Boolean(session?.token),
+    refetchInterval: dashboardMockEnabled ? false : integrityTrendRefreshMs,
+    refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
   });
@@ -120,15 +150,27 @@ export function useVerifyRange() {
   });
 }
 
+export function useStartVerificationRun() {
+  const { session } = useAuth();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (range: VerificationRangeInput) => dashboardService.startVerificationRun(session?.token, range),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: dashboardKeys.verificationRun });
+    },
+  });
+}
+
 export function useDashboardRefresh() {
   const queryClient = useQueryClient();
   return () => queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
 }
 
-export function useClientRefresh() {
+export function useRefreshVerificationStatus() {
   const queryClient = useQueryClient();
   return () => Promise.all([
-    queryClient.invalidateQueries({ queryKey: dashboardKeys.all }),
-    queryClient.invalidateQueries({ queryKey: ["recovery"] }),
+    queryClient.invalidateQueries({ queryKey: dashboardKeys.verificationRun }),
+    queryClient.invalidateQueries({ queryKey: dashboardKeys.workerStatus }),
   ]);
 }

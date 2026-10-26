@@ -2,10 +2,11 @@ import type {
   RecoveryCandidate,
   RecoveryEvent,
   RecoveryEventPage,
-  RecoveryIncident,
   RecoveryIncidentDetail,
+  RecoveryIncidentPage,
   RecoveryPreflight,
   RecoveryRequest,
+  RecoveryResourceCheck,
 } from "@/types/recovery";
 
 export interface CreateRecoveryRequestInput {
@@ -15,8 +16,17 @@ export interface CreateRecoveryRequestInput {
   idempotency_key: string;
 }
 
+export interface RecoveryIncidentQuery {
+  page: number;
+  status: "OPEN" | "ACTIVE_RECOVERY";
+  scope: "ALL" | "CLIENT_SOURCE" | "GATEWAY_INTEGRITY";
+  search: string;
+  sort: "newest" | "oldest" | "resource";
+}
+
 export interface RecoveryService {
-  getIncidents(token?: string): Promise<RecoveryIncident[]>;
+  checkResource(token: string | undefined, resource: string): Promise<RecoveryResourceCheck>;
+  getIncidents(token: string | undefined, query: RecoveryIncidentQuery): Promise<RecoveryIncidentPage>;
   getRequests(token?: string): Promise<RecoveryRequest[]>;
   getHistory(token?: string, page?: number): Promise<RecoveryEventPage>;
   getIncident(token: string | undefined, incidentId: string): Promise<RecoveryIncidentDetail>;

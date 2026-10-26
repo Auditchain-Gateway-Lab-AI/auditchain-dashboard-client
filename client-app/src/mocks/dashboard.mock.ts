@@ -118,6 +118,7 @@ export function buildTrendMock(range: TrendRange): TrendPoint[] {
     totalLogs: Math.round(((insertBase[index] ?? 121) + (updateBase[index] ?? 294) + (deleteBase[index] ?? 23)) * scale),
     valid: Math.round((validBase[index] ?? 482) * scale),
     tampered: tamperedBase[index] ?? 0,
+    sourceTampered: 0,
     pending: 0,
     unavailable: 0,
     notChecked: 0,

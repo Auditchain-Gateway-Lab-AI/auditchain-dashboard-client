@@ -17,8 +17,7 @@ import { EmptyState } from "@/components/ui/panel-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useIntegrityTrend } from "@/hooks/useDashboard";
 import { cn, formatNumber } from "@/lib/utils";
-import { dashboardMockEnabled } from "@/services/dashboard";
-import type { TrendPoint, TrendRange, TrendTab } from "@/types/dashboard";
+import type { TrendRange, TrendTab } from "@/types/dashboard";
 
 const ranges: TrendRange[] = ["8H", "24H", "7D", "30D"];
 const tabs: Array<{ id: TrendTab; icon: typeof ShieldCheck }> = [
@@ -29,16 +28,13 @@ const tabs: Array<{ id: TrendTab; icon: typeof ShieldCheck }> = [
 export function IntegrityTrend() {
   const [range, setRange] = useState<TrendRange>("8H");
   const [tab, setTab] = useState<TrendTab>("INTEGRITY");
+  // Follow main/dev: count each event once by its current proof status.
+  // Source-check attempts are separate from the event trend.
   const trend = useIntegrityTrend(range);
-  const totalLogs = trend.data?.reduce((total, point) => total + point.totalLogs, 0) ?? 0;
-  const validLabel = "Valid Logs";
-  const tamperedLabel = "Tampered";
-  const sourceLabel = dashboardMockEnabled
-    ? `Mock service - ${range}`
-    : `Aggregated ${formatNumber(totalLogs)} logs - ${range}`;
+  const totalLogs = trend.data?.reduce((sum, point) => sum + point.totalLogs, 0) ?? 0;
 
   return (
-    <Card className="flex h-full flex-col overflow-hidden">
+    <Card className="h-full overflow-hidden">
       <CardHeader className="flex-wrap py-2">
         <div className="flex items-center gap-4">
           <CardTitle>Integrity Trend</CardTitle>
@@ -77,19 +73,21 @@ export function IntegrityTrend() {
           ))}
         </div>
       </CardHeader>
-      <CardContent className="flex min-h-0 flex-1 flex-col p-3">
+      <CardContent className="p-3">
         {trend.isPending ? (
           <Skeleton className="h-[246px] w-full" />
-        ) : trend.isError || !trend.data?.length ? (
-          <EmptyState message={trend.isError ? "Integrity trend is currently unavailable." : "No trend data for this range."} />
+        ) : trend.isError && !trend.data?.length ? (
+          <div role="alert"><EmptyState message="Unable to load trend data." /><button type="button" onClick={() => void trend.refetch()} className="text-xs text-info">Try again</button></div>
+        ) : !trend.data?.length ? (
+          <EmptyState message="No trend data for this range." />
         ) : (
           <>
             <div className="mb-2 flex items-center justify-between">
               <div className="flex items-center gap-3 text-[9px] text-ink-faint">
                 {tab === "INTEGRITY" ? (
                   <>
-                    <Legend color="bg-success" label={validLabel} />
-                    <Legend color="bg-danger" label={tamperedLabel} />
+                    <Legend color="bg-success" label="Valid" />
+                    <Legend color="bg-danger" label="Invalid" />
                   </>
                 ) : (
                   <>
@@ -99,9 +97,9 @@ export function IntegrityTrend() {
                   </>
                 )}
               </div>
-              <span className="text-[8px] uppercase tracking-[0.1em] text-ink-faint">{sourceLabel}</span>
+              <span className="text-[8px] uppercase tracking-[0.1em] text-ink-faint">{formatNumber(totalLogs)} logs · {range} · WIB</span>
             </div>
-            <div className="min-h-[224px] min-w-0 flex-1">
+            <div className="h-[224px] min-w-0">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={trend.data} margin={{ top: 8, right: 4, bottom: 0, left: -20 }}>
                   <defs>
@@ -112,48 +110,12 @@ export function IntegrityTrend() {
                   </defs>
                   <CartesianGrid stroke="rgba(255,255,255,0.055)" strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="label" stroke="#61748c" tickLine={false} axisLine={false} tick={{ fontSize: 9, fontFamily: "JetBrains Mono" }} />
-                  <YAxis stroke="#61748c" tickLine={false} axisLine={false} tick={{ fontSize: 9, fontFamily: "JetBrains Mono" }} />
-                  <Tooltip
-                    content={(props) => {
-                      const point = props.payload?.[0]?.payload as TrendPoint | undefined;
-                      if (!props.active || !point) return null;
-
-                      const rows: Array<[string, number]> = tab === "INTEGRITY"
-                        ? [
-                            ["Total logs", point.totalLogs],
-                            ["Valid", point.valid],
-                            ["Tampered", point.tampered],
-                            ["Pending", point.pending],
-                            ...(point.unavailable > 0 ? [["Unavailable", point.unavailable] as [string, number]] : []),
-                            ...(point.notChecked > 0 ? [["Not checked", point.notChecked] as [string, number]] : []),
-                          ]
-                        : [
-                            ["Total audit events", point.totalLogs],
-                            ["Insert", point.insert],
-                            ["Update", point.update],
-                            ["Delete", point.delete],
-                            ["Other actions", Math.max(0, point.totalLogs - point.insert - point.update - point.delete)],
-                          ];
-
-                      return (
-                        <div className="min-w-36 rounded-md border border-line bg-panel px-3 py-2 text-[10px] shadow-xl">
-                          <p className="mb-1.5 font-mono font-semibold text-ink">{props.label}</p>
-                          <div className="space-y-1">
-                            {rows.map(([label, value]) => (
-                              <div key={label} className="flex justify-between gap-4 text-ink-dim">
-                                <span>{label}</span>
-                                <span className="font-mono font-semibold text-ink">{formatNumber(value)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    }}
-                  />
+                  <YAxis allowDecimals={false} stroke="#61748c" tickLine={false} axisLine={false} tick={{ fontSize: 9, fontFamily: "JetBrains Mono" }} />
+                  <Tooltip contentStyle={{ background: "#101e30", border: "1px solid rgba(255,255,255,.12)", borderRadius: 8, fontSize: 10 }} labelStyle={{ color: "#9fb0c4" }} />
                   {tab === "INTEGRITY" ? (
                     <>
-                      <Area type="monotone" dataKey="valid" name={validLabel} stroke="#22c47c" strokeWidth={2} fill="url(#validFill)" />
-                      <Line type="monotone" dataKey="tampered" name={tamperedLabel} stroke="#f0555c" strokeWidth={2} dot={{ r: 2, fill: "#f0555c" }} yAxisId={0} />
+                      <Area type="monotone" dataKey="valid" name="Valid" stroke="#22c47c" strokeWidth={2} fill="url(#validFill)" />
+                      <Line type="monotone" dataKey="tampered" name="Invalid" stroke="#f0555c" strokeWidth={2} dot={{ r: 2, fill: "#f0555c" }} yAxisId={0} />
                     </>
                   ) : (
                     <>

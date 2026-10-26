@@ -1,4 +1,4 @@
-import { LogOut, RotateCw, ShieldCheck } from "lucide-react";
+import { LogOut, ShieldCheck } from "lucide-react";
 import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 
@@ -10,11 +10,9 @@ interface DashboardHeaderProps {
   tenant: string;
   organization: string;
   updatedAt: number;
-  isRefreshing: boolean;
-  onRefresh: () => void;
 }
 
-export function DashboardHeader({ tenant, organization, updatedAt, isRefreshing, onRefresh }: DashboardHeaderProps) {
+export function DashboardHeader({ tenant, organization, updatedAt }: DashboardHeaderProps) {
   const { session, logout } = useAuth();
   const avatarLabel = getInitials(session?.user.displayName);
 
@@ -53,11 +51,6 @@ export function DashboardHeader({ tenant, organization, updatedAt, isRefreshing,
               <span className="size-1.5 rounded-full bg-success animate-pulse" /> Auto refresh 30s
             </div>
           </div>
-
-          <Button variant="outline" size="sm" onClick={onRefresh} disabled={isRefreshing} aria-label="Refresh dashboard">
-            <RotateCw className={cn("size-3.5", isRefreshing && "animate-spin")} />
-            <span className="hidden lg:inline">Refresh</span>
-          </Button>
 
           <div className="mx-1 hidden h-7 w-px bg-line sm:block" />
           <div className="hidden items-center gap-2 sm:flex">

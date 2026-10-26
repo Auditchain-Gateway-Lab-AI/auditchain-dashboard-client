@@ -11,6 +11,12 @@ export const dashboardService: DashboardService = {
   getIntegrityTrend: (range, token) => dashboardMockEnabled
     ? mockDashboardService.getIntegrityTrend(range, token)
     : apiDashboardService.getIntegrityTrend(range, token),
+  getIntegrityHistory: (range, dimension, token) => dashboardMockEnabled
+    ? mockDashboardService.getIntegrityHistory(range, dimension, token)
+    : apiDashboardService.getIntegrityHistory(range, dimension, token),
+  getWorkerStatus: (token) => dashboardMockEnabled
+    ? mockDashboardService.getWorkerStatus(token)
+    : apiDashboardService.getWorkerStatus(token),
   getTables: () => mockDashboardService.getTables(),
   getInventory: (token) => dashboardMockEnabled
     ? mockDashboardService.getInventory(token)
@@ -21,6 +27,9 @@ export const dashboardService: DashboardService = {
   verifyRange: (token, range) => dashboardMockEnabled
     ? mockDashboardService.verifyRange(token, range)
     : apiDashboardService.verifyRange(token, range),
+  startVerificationRun: (token, range) => dashboardMockEnabled
+    ? mockDashboardService.startVerificationRun(token, range)
+    : apiDashboardService.startVerificationRun(token, range),
   getLatestVerificationRun: (token) => dashboardMockEnabled
     ? mockDashboardService.getLatestVerificationRun(token)
     : apiDashboardService.getLatestVerificationRun(token),

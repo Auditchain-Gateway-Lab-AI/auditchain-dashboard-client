@@ -40,6 +40,34 @@ export interface RecoveryIncident {
   resolved_at?: string | null;
 }
 
+export interface RecoveryResourceCheck {
+  resource: string;
+  chain_status: string;
+  logs: Array<{
+    log_id: string;
+    is_latest_client_event: boolean;
+    proof_status?: string;
+    integrity_status?: string;
+    chain_status?: string;
+    source_status?: RecoverySourceStatus;
+    agent_status?: string;
+    incident_id?: string;
+    incident_scope?: RecoveryIncidentScope;
+  }>;
+}
+
+export interface RecoveryIncidentPage {
+  data: RecoveryIncident[];
+  page: number;
+  page_size: number;
+  total_items: number;
+  total_pages: number;
+  open_count: number;
+  active_count: number;
+  /** False only when the server is an older version that returns an unpaged array. */
+  server_paged?: boolean;
+}
+
 export interface RecoveryIncidentDetail extends RecoveryIncident {
   tampered_metadata?: unknown;
   tampered_evidence_available?: boolean;
@@ -72,6 +100,8 @@ export interface RecoveryTrustedPreview {
 export interface RecoveryPreflight {
   status: string;
   recoverable: boolean;
+  execution_ready?: boolean;
+  execution_blocker?: string;
   log_id: string;
   current_hash?: string;
   current_integrity?: string;
@@ -87,8 +117,12 @@ export interface RecoveryPreflight {
   source_status?: RecoverySourceStatus;
   agent_status?: string;
   source_found?: boolean;
+  /** Fresh semantic comparison from the backend; an empty list means no changes. */
+  changed_fields?: string[];
   snapshot_preview?: RecoveryTrustedPreview;
   trusted_reference_preview?: RecoveryTrustedPreview;
+  current_state_preview?: unknown;
+  trusted_state_preview?: unknown;
 }
 
 export interface RecoveryRequest {
@@ -165,6 +199,7 @@ export interface RecoveryPreviewItem {
   preflight?: RecoveryPreflight;
   request?: RecoveryRequest;
   ready: boolean;
+  readOnly?: boolean;
   error?: string;
 }
 

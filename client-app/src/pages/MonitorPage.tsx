@@ -1,4 +1,5 @@
 import { DashboardSkeleton } from "@/components/dashboard/DashboardSkeleton";
+import { AgentAuditPanel } from "@/components/dashboard/AgentAuditPanel";
 import { IntegrityTrend } from "@/components/dashboard/IntegrityTrend";
 import { LatestAuditScan } from "@/components/dashboard/LatestAuditScan";
 import { LiveNeedsAttention } from "@/components/dashboard/LiveNeedsAttention";
@@ -8,22 +9,24 @@ import { OverviewStats } from "@/components/dashboard/OverviewStats";
 import { TableInsights } from "@/components/dashboard/TableInsights";
 import { TableInventory } from "@/components/dashboard/TableInventory";
 import { TableWatchlist } from "@/components/dashboard/TableWatchlist";
-import { VerificationSnapshot } from "@/components/dashboard/VerificationSnapshot";
 import { ErrorState } from "@/components/ui/panel-state";
 import { useDashboardData, useDashboardRefresh } from "@/hooks/useDashboard";
+import { useRecoveryData } from "@/hooks/useRecovery";
 import { formatTime } from "@/lib/utils";
 import { dashboardMockEnabled } from "@/services/dashboard";
 
 export function MonitorPage() {
   const dashboard = useDashboardData();
   const refresh = useDashboardRefresh();
+  const recovery = useRecoveryData(1, false);
 
   if (dashboard.isInitialLoading) return <DashboardSkeleton />;
 
-  const { overview, tables, inventory, latestScan, insights, issues, verificationRun } = dashboard;
+  const { overview, tables, inventory, latestScan, insights, issues } = dashboard;
+  const recoveryIncidents = recovery.incidents.data;
   const hasMissingData = !overview.data || (dashboardMockEnabled
     ? (!tables.data || !latestScan.data || !insights.data || !issues.data)
-    : !inventory.data || verificationRun.data === undefined);
+    : !inventory.data);
 
   if (dashboard.isError || hasMissingData) {
     return <ErrorState onRetry={() => void refresh()} />;
@@ -41,6 +44,12 @@ export function MonitorPage() {
         </div>
       )}
       <OverviewStats data={overview.data} />
+      {!dashboardMockEnabled && (
+        <AgentAuditPanel
+          run={dashboard.verificationRun.data ?? null}
+          runStatusStale={dashboard.verificationRun.isError}
+        />
+      )}
       {dashboardMockEnabled ? (
         <>
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">
@@ -54,17 +63,23 @@ export function MonitorPage() {
           </div>
         </>
       ) : (
-        <>
-          <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">
-            <div className="xl:col-span-5"><TableInventory data={inventory.data ?? []} overview={overview.data} /></div>
-            <div className="xl:col-span-4"><IntegrityTrend /></div>
-            <div className="xl:col-span-3"><VerificationSnapshot data={overview.data} run={verificationRun.data ?? null} /></div>
+        <div className="grid grid-cols-1 items-stretch gap-3 xl:grid-cols-12">
+          <div className="min-w-0 space-y-3 xl:col-span-5 xl:self-start">
+            <TableInventory data={inventory.data ?? []} overview={overview.data} />
+            <LiveTableInsights inventory={inventory.data ?? []} overview={overview.data} />
           </div>
-          <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">
-            <div className="xl:col-span-5"><LiveTableInsights inventory={inventory.data ?? []} overview={overview.data} /></div>
-            <div className="xl:col-span-7"><LiveNeedsAttention overview={overview.data} /></div>
+          <div className="flex min-w-0 flex-col gap-3 xl:col-span-4">
+            <IntegrityTrend />
           </div>
-        </>
+          <div className="min-w-0 xl:col-span-3">
+            <LiveNeedsAttention
+              incidents={recoveryIncidents?.data ?? []}
+              total={recoveryIncidents?.total_items ?? 0}
+              pending={recovery.incidents.isPending}
+              error={recovery.incidents.isError}
+            />
+          </div>
+        </div>
       )}
     </main>
   );

@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#07111e">
+  <title>Recovery Flow Demo — AuditChain</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ground: #07111e;
+      --panel: #0c1929;
+      --panel-2: #102036;
+      --panel-3: #14263b;
+      --line: rgba(255, 255, 255, .08);
+      --line-strong: rgba(255, 255, 255, .14);
+      --ink: #e7eef7;
+      --muted: #9fb0c4;
+      --faint: #71849d;
+      --green: #22c47c;
+      --green-bg: rgba(34, 196, 124, .11);
+      --blue: #62a5ff;
+      --blue-bg: rgba(74, 146, 236, .12);
+      --amber: #f5b544;
+      --amber-bg: rgba(245, 165, 36, .11);
+      --red: #ff6872;
+      --red-bg: rgba(240, 85, 92, .12);
+      --radius: 12px;
+      font-family: Inter, "Segoe UI", system-ui, sans-serif;
+      background: var(--ground);
+      color: var(--ink);
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--ground); }
+    button, input, textarea { font: inherit; }
+    button { color: inherit; }
+    button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+    .app { min-height: 100vh; }
+    .topbar { height: 66px; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 0 30px; border-bottom: 1px solid var(--line); background: #091524; }
+    .brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
+    .brand-mark { width: 34px; height: 34px; display: grid; place-items: center; flex: 0 0 auto; border: 1px solid rgba(74, 146, 236, .35); border-radius: 10px; color: var(--blue); background: var(--blue-bg); font-size: 17px; }
+    .brand-name { font-size: 13px; font-weight: 700; letter-spacing: .025em; }
+    .brand-sub { margin-top: 2px; color: var(--faint); font: 9px ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase; }
+    .top-actions { display: flex; align-items: center; gap: 10px; }
+    .workspace-tag, .demo-pill, .scope-pill, .status-pill, .evidence-tag { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--line-strong); border-radius: 999px; padding: 5px 9px; color: var(--muted); font: 9px ui-monospace, monospace; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+    .demo-pill { border-color: rgba(98, 165, 255, .3); color: var(--blue); background: var(--blue-bg); }
+    .layout { display: grid; grid-template-columns: 215px minmax(0, 1fr); min-height: calc(100vh - 66px); }
+    .sidebar { padding: 25px 13px; border-right: 1px solid var(--line); background: #091524; }
+    .side-label { padding: 0 11px 9px; color: var(--faint); font: 9px ui-monospace, monospace; letter-spacing: .14em; text-transform: uppercase; }
+    .side-link { display: flex; align-items: center; gap: 10px; margin: 3px 0; padding: 10px 11px; border-radius: 8px; color: var(--muted); font-size: 12px; }
+    .side-link.active { color: var(--ink); background: rgba(47, 111, 208, .19); box-shadow: inset 2px 0 var(--blue); }
+    .side-icon { width: 18px; text-align: center; color: var(--faint); }
+    .side-link.active .side-icon { color: var(--blue); }
+    .side-note { margin: 30px 6px 0; padding: 12px; border: 1px solid var(--line); border-radius: 9px; color: var(--faint); font-size: 10px; line-height: 1.55; }
+    main { width: 100%; max-width: 1600px; margin: 0 auto; padding: 28px 30px 48px; }
+    .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin-bottom: 20px; }
+    .eyebrow { color: var(--green); font: 10px ui-monospace, monospace; letter-spacing: .15em; text-transform: uppercase; }
+    h1 { margin: 6px 0 5px; font-size: clamp(23px, 3vw, 30px); letter-spacing: -.035em; }
+    .subtitle { max-width: 690px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; padding: 8px 12px; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--ink); background: var(--panel-2); font-size: 11px; font-weight: 650; cursor: pointer; transition: background .15s, border-color .15s, transform .15s; }
+    .button:hover:not(:disabled) { border-color: rgba(255,255,255,.25); background: var(--panel-3); }
+    .button:active:not(:disabled) { transform: translateY(1px); }
+    .button:disabled { opacity: .42; cursor: not-allowed; }
+    .button.primary { border-color: transparent; color: #032617; background: var(--green); }
+    .button.primary:hover:not(:disabled) { background: #37d790; }
+    .button.danger { color: var(--red); border-color: rgba(240,85,92,.3); background: var(--red-bg); }
+    .button.ghost { color: var(--muted); background: transparent; }
+    .button.small { min-height: 30px; padding: 6px 9px; font-size: 10px; }
+    .demo-banner { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 16px; padding: 11px 13px; border: 1px solid rgba(98,165,255,.25); border-radius: 9px; color: var(--muted); background: rgba(74,146,236,.07); font-size: 11px; line-height: 1.5; }
+    .demo-banner strong { color: var(--blue); }
+    .demo-banner .banner-icon { color: var(--blue); font-size: 15px; }
+    .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 18px; }
+    .metric { display: flex; align-items: center; gap: 11px; min-height: 76px; padding: 13px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+    .metric-icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; color: var(--blue); background: var(--blue-bg); font-size: 16px; }
+    .metric-icon.warn { color: var(--amber); background: var(--amber-bg); }
+    .metric-icon.ok { color: var(--green); background: var(--green-bg); }
+    .metric-value { font: 700 21px ui-monospace, monospace; }
+    .metric-label { margin-top: 2px; color: var(--muted); font-size: 10px; }
+    .tabs { display: flex; gap: 4px; width: fit-content; max-width: 100%; margin-bottom: 12px; padding: 4px; overflow-x: auto; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); }
+    .tab { display: inline-flex; align-items: center; gap: 7px; padding: 8px 11px; border: 0; border-radius: 6px; color: var(--muted); background: transparent; font-size: 11px; cursor: pointer; white-space: nowrap; }
+    .tab.active { color: var(--ink); background: rgba(47,111,208,.21); }
+    .tab-count { color: var(--faint); font: 10px ui-monospace, monospace; }
+    .workspace { display: grid; grid-template-columns: minmax(280px, .83fr) minmax(0, 1.55fr); gap: 12px; align-items: start; }
+    .panel { min-width: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); overflow: hidden; }
+    .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 15px; border-bottom: 1px solid var(--line); }
+    .panel-title { margin: 0; font-size: 12px; font-weight: 700; }
+    .panel-subtitle { margin-top: 4px; color: var(--faint); font-size: 10px; }
+    .incident-list { display: flex; flex-direction: column; gap: 1px; padding: 5px; }
+    .incident-card { width: 100%; display: block; padding: 12px 11px; text-align: left; border: 1px solid transparent; border-radius: 9px; background: transparent; cursor: pointer; }
+    .incident-card:hover { background: rgba(255,255,255,.025); }
+    .incident-card.selected { border-color: rgba(98,165,255,.28); background: rgba(47,111,208,.12); }
+    .incident-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .resource { font: 700 12px ui-monospace, monospace; }
+    .incident-id { margin-top: 4px; color: var(--faint); font: 9px ui-monospace, monospace; }
+    .incident-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
+    .issue { color: var(--muted); font-size: 10px; }
+    .time { color: var(--faint); font: 9px ui-monospace, monospace; }
+    .scope-pill.client { color: var(--blue); border-color: rgba(98,165,255,.26); background: var(--blue-bg); }
+    .scope-pill.gateway { color: var(--amber); border-color: rgba(245,181,68,.25); background: var(--amber-bg); }
+    .status-pill.ready { color: var(--green); border-color: rgba(34,196,124,.25); background: var(--green-bg); }
+    .status-pill.blocked { color: var(--red); border-color: rgba(240,85,92,.25); background: var(--red-bg); }
+    .status-pill.open, .status-pill.investigate { color: var(--amber); border-color: rgba(245,181,68,.25); background: var(--amber-bg); }
+    .status-pill.resolved { color: var(--green); border-color: rgba(34,196,124,.25); background: var(--green-bg); }
+    .detail { min-height: 520px; }
+    .detail-body { padding: 15px; }
+    .detail-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .detail-heading h2 { margin: 0; font: 700 15px ui-monospace, monospace; }
+    .detail-heading p { margin: 5px 0 0; color: var(--muted); font-size: 10px; }
+    .incident-meta { display: flex; flex-wrap: wrap; gap: 7px; margin: 12px 0 14px; }
+    .stepper { display: grid; grid-template-columns: repeat(5, 1fr); margin: 4px 0 16px; }
+    .step { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; color: var(--faint); text-align: center; font-size: 9px; }
+    .step:not(:last-child)::after { position: absolute; z-index: 0; top: 12px; left: calc(50% + 15px); width: calc(100% - 30px); height: 1px; content: ""; background: var(--line-strong); }
+    .step.done:not(:last-child)::after { background: rgba(34,196,124,.55); }
+    .step-dot { z-index: 1; display: grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--line-strong); border-radius: 50%; color: var(--muted); background: var(--panel); font: 10px ui-monospace, monospace; }
+    .step.active { color: var(--ink); }
+    .step.active .step-dot { border-color: var(--blue); color: var(--blue); box-shadow: 0 0 0 3px rgba(98,165,255,.1); }
+    .step.done { color: var(--green); }
+    .step.done .step-dot { border-color: rgba(34,196,124,.55); color: var(--green); background: var(--green-bg); }
+    .section-card { margin-top: 11px; padding: 13px; border: 1px solid var(--line); border-radius: 9px; background: rgba(3,12,23,.28); }
+    .section-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 10px; font-size: 10px; font-weight: 750; letter-spacing: .04em; }
+    .section-title .hint { color: var(--faint); font-size: 9px; font-weight: 450; letter-spacing: 0; }
+    .body-copy { color: var(--muted); font-size: 11px; line-height: 1.6; }
+    .evidence-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+    .evidence-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 7px; background: rgba(255,255,255,.018); }
+    .evidence-name { min-width: 0; color: var(--muted); font-size: 10px; }
+    .evidence-value { color: var(--faint); font: 9px ui-monospace, monospace; white-space: nowrap; }
+    .evidence-value.pass { color: var(--green); }
+    .evidence-value.fail { color: var(--red); }
+    .evidence-value.wait { color: var(--faint); }
+    .evidence-tag { padding: 4px 7px; font-size: 8px; }
+    .callout { display: flex; align-items: flex-start; gap: 9px; margin-top: 11px; padding: 10px 11px; border: 1px solid rgba(245,181,68,.25); border-radius: 8px; color: var(--amber); background: var(--amber-bg); font-size: 10px; line-height: 1.55; }
+    .callout.error { color: var(--red); border-color: rgba(240,85,92,.25); background: var(--red-bg); }
+    .callout.success { color: var(--green); border-color: rgba(34,196,124,.25); background: var(--green-bg); }
+    .callout.info { color: var(--blue); border-color: rgba(98,165,255,.25); background: var(--blue-bg); }
+    .callout-icon { font-size: 13px; line-height: 1.2; }
+    .action-row { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+    .compare-card { min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; }
+    .compare-head { padding: 9px 10px; border-bottom: 1px solid var(--line); color: var(--muted); background: rgba(255,255,255,.018); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+    .compare-head.current { color: var(--amber); }
+    .compare-head.trusted { color: var(--green); }
+    .data-table { width: 100%; border-collapse: collapse; font: 10px ui-monospace, monospace; }
+    .data-table td { padding: 8px 9px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+    .data-table tr:last-child td { border-bottom: 0; }
+    .data-table td:first-child { width: 39%; color: var(--faint); }
+    .changed { color: var(--amber); }
+    .trusted-val { color: var(--green); }
+    .proof-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-top: 9px; }
+    .proof-chip { min-width: 0; padding: 8px 9px; border: 1px solid var(--line); border-radius: 7px; }
+    .proof-chip-label { color: var(--faint); font-size: 8px; text-transform: uppercase; letter-spacing: .07em; }
+    .proof-chip-value { margin-top: 4px; overflow: hidden; color: var(--muted); font: 9px ui-monospace, monospace; text-overflow: ellipsis; white-space: nowrap; }
+    .proof-chip-value.ok { color: var(--green); }
+    .form-label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 10px; font-weight: 650; }
+    textarea { display: block; width: 100%; min-height: 78px; resize: vertical; padding: 10px; border: 1px solid var(--line-strong); border-radius: 7px; color: var(--ink); background: #081321; font-size: 11px; line-height: 1.5; }
+    textarea::placeholder { color: var(--faint); }
+    .char-count { display: flex; justify-content: flex-end; margin-top: 4px; color: var(--faint); font: 9px ui-monospace, monospace; }
+    .confirm-check { display: flex; align-items: flex-start; gap: 9px; margin-top: 11px; padding: 10px; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); font-size: 10px; line-height: 1.5; cursor: pointer; }
+    .confirm-check input { margin: 1px 0 0; accent-color: var(--green); }
+    .confirm-check strong { color: var(--ink); }
+    .progress-list { display: grid; gap: 8px; margin-top: 12px; }
+    .progress-item { display: flex; align-items: center; gap: 9px; padding: 10px; border: 1px solid var(--line); border-radius: 7px; color: var(--faint); font-size: 10px; }
+    .progress-item.active { border-color: rgba(98,165,255,.24); color: var(--blue); background: var(--blue-bg); }
+    .progress-item.done { color: var(--green); background: var(--green-bg); }
+    .progress-icon { width: 16px; text-align: center; font-size: 12px; }
+    .result-list { display: grid; gap: 7px; }
+    .result-row { display: flex; justify-content: space-between; gap: 12px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 7px; font-size: 10px; }
+    .result-row span:first-child { color: var(--muted); }
+    .result-row span:last-child { color: var(--green); text-align: right; }
+    .history-wrap { padding: 14px; }
+    .history-row { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(100px, .8fr) minmax(120px, 1.1fr) auto; align-items: center; gap: 12px; padding: 13px 11px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.015); }
+    .history-row + .history-row { margin-top: 8px; }
+    .history-main { font: 700 11px ui-monospace, monospace; }
+    .history-sub { margin-top: 4px; color: var(--faint); font-size: 9px; }
+    .history-col-label { color: var(--faint); font-size: 8px; text-transform: uppercase; letter-spacing: .08em; }
+    .history-col-value { margin-top: 4px; color: var(--muted); font-size: 10px; }
+    .empty { padding: 35px 15px; color: var(--faint); text-align: center; font-size: 11px; line-height: 1.6; }
+    .footer-note { margin-top: 15px; color: var(--faint); font-size: 9px; line-height: 1.55; text-align: center; }
+    .hidden { display: none !important; }
+    .spin { display: inline-block; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 1000px) {
+      .layout { grid-template-columns: 68px minmax(0, 1fr); }
+      .sidebar { padding-right: 8px; padding-left: 8px; }
+      .side-label, .side-text, .side-note { display: none; }
+      .side-link { justify-content: center; padding: 12px 6px; font-size: 0; }
+      .side-icon { font-size: 15px; }
+      main { padding-right: 20px; padding-left: 20px; }
+    }
+    @media (max-width: 760px) {
+      .topbar { height: 58px; padding: 0 15px; }
+      .workspace-tag { display: none; }
+      .layout { display: block; min-height: calc(100vh - 58px); }
+      .sidebar { display: none; }
+      main { padding: 22px 14px 34px; }
+      .page-head { align-items: flex-start; flex-direction: column; }
+      .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+      .metric { min-height: 66px; padding: 10px; }
+      .metric-icon { width: 30px; height: 30px; }
+      .workspace { grid-template-columns: 1fr; }
+      .detail { min-height: 0; }
+      .incident-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .incident-card { padding: 10px 8px; }
+      .incident-top { align-items: flex-start; flex-direction: column; }
+      .incident-bottom { align-items: flex-start; flex-direction: column; }
+      .history-row { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 440px) {
+      .brand-name { font-size: 12px; }
+      .topbar { gap: 8px; }
+      .top-actions { gap: 5px; }
+      .demo-pill { padding: 5px 7px; font-size: 8px; }
+      .metrics { gap: 6px; }
+      .metric { gap: 8px; }
+      .metric-value { font-size: 18px; }
+      .metric-label { font-size: 9px; }
+      .incident-list { grid-template-columns: 1fr; }
+      .incident-top, .incident-bottom { align-items: center; flex-direction: row; }
+      .evidence-list, .compare-grid { grid-template-columns: 1fr; }
+      .proof-summary { grid-template-columns: 1fr; }
+      .proof-chip-value { white-space: normal; }
+      .step { font-size: 8px; }
+      .step:not(:last-child)::after { left: calc(50% + 12px); width: calc(100% - 24px); }
+      .step-dot { width: 22px; height: 22px; }
+      .detail-body { padding: 12px; }
+      .history-row { grid-template-columns: 1fr; }
+      .action-row .button { flex: 1 1 auto; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">⬡</div>
+        <div><div class="brand-name">AuditChain Client Portal</div><div class="brand-sub">Integrity workspace</div></div>
+      </div>
+      <div class="top-actions"><span class="workspace-tag">SIMRS MORBIS 1 · CLIENT WORKSPACE</span><span class="demo-pill">● DEMO LOKAL</span></div>
+    </header>
+    <div class="layout">
+      <aside class="sidebar" aria-label="Navigasi contoh">
+        <div class="side-label">Workspace</div>
+        <div class="side-link"><span class="side-icon">◫</span><span class="side-text">Monitor</span></div>
+        <div class="side-link"><span class="side-icon">◈</span><span class="side-text">Integrity</span></div>
+        <div class="side-link active" aria-current="page"><span class="side-icon">↻</span><span class="side-text">Recovery</span></div>
+        <div class="side-note">Prototype ini memperlihatkan pemulihan baris data client dari event tepercaya terbaru.</div>
+      </aside>
+      <main>
+        <div class="page-head">
+          <div><div class="eyebrow">Recovery operations · prototype</div><h1>Recovery data client</h1><p class="subtitle">Periksa perbedaan data, pastikan bukti dan izin Agent lengkap, lalu pulihkan baris client dengan persetujuan operator.</p></div>
+          <button class="button ghost" type="button" data-action="reset">↺ Reset demo</button>
+        </div>
+        <div class="demo-banner" role="note"><span class="banner-icon" aria-hidden="true">ⓘ</span><span><strong>Simulasi lokal.</strong> Semua insiden dan hasil dibuat-buat. Tombol Execute hanya mengubah tampilan demo ini; tidak ada koneksi ke Gateway, Agent, Oracle, Fabric, atau database.</span></div>
+        <section class="metrics" aria-label="Ringkasan recovery">
+          <div class="metric"><span class="metric-icon warn">!</span><div><div class="metric-value" id="metric-open">—</div><div class="metric-label">Insiden terbuka</div></div></div>
+          <div class="metric"><span class="metric-icon ok">✓</span><div><div class="metric-value" id="metric-ready">—</div><div class="metric-label">Kandidat demo</div></div></div>
+          <div class="metric"><span class="metric-icon">↻</span><div><div class="metric-value">0</div><div class="metric-label">Recovery berjalan</div></div></div>
+          <div class="metric"><span class="metric-icon ok">⌑</span><div><div class="metric-value" id="metric-history">0</div><div class="metric-label">Hasil demo berhasil</div></div></div>
+        </section>
+        <div class="tabs" role="tablist" aria-label="Halaman recovery">
+          <button class="tab active" id="tab-incidents" type="button" role="tab" aria-selected="true" data-action="tab" data-tab="incidents">◈ Insiden <span class="tab-count" id="tab-open-count"></span></button>
+          <button class="tab" id="tab-history" type="button" role="tab" aria-selected="false" data-action="tab" data-tab="history">▤ Recovery history <span class="tab-count" id="tab-history-count"></span></button>
+        </div>
+        <section class="workspace" id="incident-view" role="tabpanel" aria-labelledby="tab-incidents">
+          <div class="panel">
+            <div class="panel-head"><div><h2 class="panel-title">Insiden</h2><div class="panel-subtitle">Pilih satu kasus untuk melihat bukti</div></div><span class="evidence-tag">4 CONTOH</span></div>
+            <div class="incident-list" id="incident-list"></div>
+          </div>
+          <section class="panel detail" id="detail-panel" aria-live="polite"></section>
+        </section>
+        <section class="panel hidden" id="history-view" role="tabpanel" aria-labelledby="tab-history"></section>
+        <p class="footer-note">Demo tidak menyimpan perubahan setelah halaman ditutup atau dimuat ulang. Recovery produksi tetap harus melalui preflight Gateway dan validasi Agent.</p>
+      </main>
+    </div>
+  </div>
+  <script>
+    "use strict";
+    const seedIncidents = [
+      {
+        id: "INC-DEMO-0147", resource: "RUANGAN:9901", scope: "CLIENT_SOURCE", issue: "CLIENT_STATE_MISMATCH", detected: "21 Okt 2026 · 08:15", status: "OPEN", sourceStatus: "MISMATCH", canRecover: true,
+        current: { ID: "9901", NAMA: "Ruang Rawat Inap Mawar", AKTIF: "Y", ID_UNIT: "UNIT-02" },
+        trusted: { ID: "9901", NAMA: "Ruang Rawat Inap Melati", AKTIF: "Y", ID_UNIT: "UNIT-02" },
+        checks: { event: true, hash: true, merkle: true, fabric: true, agent: true },
+        eventId: "EVT-CLIENT-6150", leafHash: "sha256: 92f7c11a…e1a7", merkleRoot: "sha256: 3ab4d8c2…70bc", anchor: "FABRIC · block 8421"
+      },
+      {
+        id: "INC-DEMO-0148", resource: "RUANGAN:9902", scope: "CLIENT_SOURCE", issue: "CLIENT_STATE_MISMATCH", detected: "21 Okt 2026 · 08:16", status: "OPEN", sourceStatus: "MISMATCH", canRecover: false, blocker: "Bukti Merkle tidak cocok dengan root tepercaya. Data client tidak boleh ditimpa.",
+        current: { ID: "9902", NAMA: "Ruang Transit", AKTIF: "Y", ID_UNIT: "UNIT-02" },
+        trusted: { ID: "9902", NAMA: "Ruang Observasi", AKTIF: "Y", ID_UNIT: "UNIT-02" },
+        checks: { event: true, hash: true, merkle: false, fabric: true, agent: true },
+        eventId: "EVT-CLIENT-6151", leafHash: "sha256: 18bc0031…4a11", merkleRoot: "Tidak cocok", anchor: "FABRIC · block 8422"
+      },
+      {
+        id: "INC-DEMO-0149", resource: "RUANGAN:9903", scope: "CLIENT_SOURCE", issue: "CLIENT_STATE_MISMATCH", detected: "21 Okt 2026 · 08:17", status: "OPEN", sourceStatus: "MISMATCH", canRecover: false, blocker: "Agent menolak operasi UPSERT karena policy aktif tidak mengizinkannya. Minta pengelola policy Agent untuk database client meninjau izin operasi, lalu lakukan Recheck setelah perubahan disetujui dan diterapkan. Admin platform AuditChain tidak dapat melewati pembatasan Agent.",
+        current: { ID: "9903", NAMA: "Ruang Tindakan Lama", AKTIF: "Y", ID_UNIT: "UNIT-04" },
+        trusted: { ID: "9903", NAMA: "Ruang Tindakan", AKTIF: "Y", ID_UNIT: "UNIT-04" },
+        checks: { event: true, hash: true, merkle: true, fabric: true, agent: false },
+        eventId: "EVT-CLIENT-6152", leafHash: "sha256: a14d8e2c…c342", merkleRoot: "sha256: b66eae10…095f", anchor: "FABRIC · block 8423"
+      },
+      {
+        id: "INC-DEMO-0150", resource: "RUANGAN:9904", scope: "GATEWAY_INTEGRITY", issue: "METADATA_HASH_MISMATCH", detected: "21 Okt 2026 · 08:19", status: "OPEN", sourceStatus: "NOT_CHECKED", canRecover: false,
+        checks: { event: false, hash: false, merkle: true, fabric: true, agent: false }, gatewayNote: "Hash metadata yang tersimpan di Gateway tidak cocok. Ini pemeriksaan integritas Gateway; belum ada hasil perbandingan dengan baris data client."
+      }
+    ];
+    let incidents = copy(seedIncidents);
+    let history = [];
+    let selectedId = seedIncidents[0].id;
+    let activeTab = "incidents";
+    let stage = "inspect";
+    let progressIndex = -1;
+    let reasonDraft = "";
+    let confirmed = false;
+    let running = false;
+    const progressSteps = [
+      "Agent menerapkan field yang diizinkan ke baris client",
+      "Agent membaca ulang data; hash harus cocok",
+      "Menunggu event perubahan baru dari CDC",
+      "Memastikan bukti recovery dan anchor valid"
+    ];
+
+    function copy(value) { return JSON.parse(JSON.stringify(value)); }
+    function esc(value) { return String(value ?? "").replace(/[&<>\"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[char]); }
+    function selectedIncident() { return incidents.find((item) => item.id === selectedId); }
+    function nowLabel() { return new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short" }).format(new Date()); }
+    function scopeLabel(item) { return item.scope === "CLIENT_SOURCE" ? "DATA CLIENT" : "INTEGRITAS GATEWAY"; }
+    function statusLabel(item) {
+      if (item.scope === "GATEWAY_INTEGRITY") return "INVESTIGASI";
+      if (item.status === "RESOLVED") return "SELESAI";
+      return item.canRecover ? "PERLU REVIEW" : "TERBLOKIR";
+    }
+    function statusClass(item) {
+      if (item.scope === "GATEWAY_INTEGRITY") return "investigate";
+      if (item.status === "RESOLVED") return "resolved";
+      return item.canRecover ? "ready" : "blocked";
+    }
+    function renderMetrics() {
+      const open = incidents.filter((item) => item.status === "OPEN").length;
+      const ready = incidents.filter((item) => item.status === "OPEN" && item.scope === "CLIENT_SOURCE" && item.canRecover).length;
+      document.getElementById("metric-open").textContent = open;
+      document.getElementById("metric-ready").textContent = ready;
+      document.getElementById("metric-history").textContent = history.length;
+      document.getElementById("tab-open-count").textContent = open;
+      document.getElementById("tab-history-count").textContent = history.length;
+    }
+    function renderList() {
+      document.getElementById("incident-list").innerHTML = incidents.map((item) => `
+        <button class="incident-card ${item.id === selectedId ? "selected" : ""}" type="button" data-action="select" data-id="${esc(item.id)}" aria-pressed="${item.id === selectedId}">
+          <div class="incident-top"><span class="resource">${esc(item.resource)}</span><span class="status-pill ${statusClass(item)}">${statusLabel(item)}</span></div>
+          <div class="incident-id">${esc(item.id)}</div>
+          <div class="incident-bottom"><span class="scope-pill ${item.scope === "CLIENT_SOURCE" ? "client" : "gateway"}">${scopeLabel(item)}</span><span class="time">${esc(item.detected)}</span></div>
+          <div class="issue" style="margin-top:8px">${esc(item.issue)}</div>
+        </button>`).join("");
+    }
+    function stepIndex() {
+      if (stage === "inspect") return 0;
+      if (stage === "checking" || stage === "blocked") return 1;
+      if (stage === "preview") return 2;
+      if (stage === "confirm") return 3;
+      return 4;
+    }
+    function renderStepper() {
+      const labels = ["Pilih insiden", "Periksa bukti", "Preview", "Konfirmasi", "Hasil"];
+      const current = stepIndex();
+      return `<div class="stepper" aria-label="Tahapan recovery">${labels.map((label, index) => `<div class="step ${index < current || stage === "success" ? "done" : index === current ? "active" : ""}"><span class="step-dot">${index < current || stage === "success" ? "✓" : index + 1}</span><span>${label}</span></div>`).join("")}</div>`;
+    }
+    function checkText(item, key) {
+      const checked = item.preflight === "VALID" || item.preflight === "BLOCKED";
+      if (!checked) return ["Belum diperiksa", "wait"];
+      return item.checks[key] ? ["Lolos", "pass"] : ["Gagal", "fail"];
+    }
+    function renderEvidence(item) {
+      const rows = [["event", "Event client tepercaya"], ["hash", "Hash payload"], ["merkle", "Merkle proof"], ["fabric", "Anchor Fabric"], ["agent", "Izin operasi Agent"]];
+      return `<div class="section-card"><h3 class="section-title">Pemeriksaan bukti <span class="hint">Semuanya harus lolos untuk membuka preview</span></h3><div class="evidence-list">${rows.map(([key, label]) => { const [value, cls] = checkText(item, key); return `<div class="evidence-row"><span class="evidence-name">${label}</span><span class="evidence-value ${cls}">${value}</span></div>`; }).join("")}</div></div>`;
+    }
+    function renderCompare(item) {
+      const fields = Object.keys(item.trusted || {});
+      const dataTable = (data, side) => `<table class="data-table"><tbody>${fields.map((field) => {
+        const changed = item.current[field] !== item.trusted[field];
+        const cls = changed ? (side === "current" ? "changed" : "trusted-val") : "";
+        return `<tr><td>${esc(field)}</td><td class="${cls}">${esc(data[field])}${changed && side === "current" ? " · berbeda" : ""}</td></tr>`;
+      }).join("")}</tbody></table>`;
+      return `<div class="section-card"><h3 class="section-title">Bandingkan baris client <span class="hint">Data di layar ini sintetis; produksi perlu menyamarkan field sensitif</span></h3><div class="compare-grid"><div class="compare-card"><div class="compare-head current">Data client saat ini</div>${dataTable(item.current, "current")}</div><div class="compare-card"><div class="compare-head trusted">Event client tepercaya terbaru</div>${dataTable(item.trusted, "trusted")}</div></div><div class="proof-summary"><div class="proof-chip"><div class="proof-chip-label">Event sumber</div><div class="proof-chip-value">${esc(item.eventId)}</div></div><div class="proof-chip"><div class="proof-chip-label">Hash payload</div><div class="proof-chip-value">${esc(item.leafHash)}</div></div><div class="proof-chip"><div class="proof-chip-label">Merkle & Fabric</div><div class="proof-chip-value ok">VALID · ${esc(item.anchor)}</div></div></div></div>`;
+    }
+    function renderInspect(item) {
+      const isChecking = stage === "checking";
+      const wasBlocked = stage === "blocked" || item.preflight === "BLOCKED";
+      const actionLabel = isChecking ? "Memeriksa bukti…" : item.preflight === "BLOCKED" ? "Periksa ulang bukti" : "Periksa bukti & lanjut ke preview";
+      return `${renderEvidence(item)}${wasBlocked ? `<div class="callout error" role="alert"><span class="callout-icon">!</span><span><strong>Recovery diblokir.</strong> ${esc(item.blocker || "Salah satu syarat belum terpenuhi.")} Insiden tetap terbuka dan data client tidak diubah.</span></div>` : ""}<div class="action-row"><button class="button primary" type="button" data-action="preflight" ${isChecking ? "disabled" : ""}>${isChecking ? '<span class="spin">◌</span>' : "✓"} ${actionLabel}</button></div>`;
+    }
+    function renderGateway(item) {
+      return `<div class="callout" role="note"><span class="callout-icon">ⓘ</span><span><strong>Investigasi metadata Gateway.</strong> Ini bukan insiden perbedaan data client. Recovery data client tidak bisa memperbaiki metadata Gateway.</span></div><div class="section-card"><h3 class="section-title">Informasi insiden</h3><p class="body-copy">${esc(item.gatewayNote)}</p><div class="evidence-list" style="margin-top:10px"><div class="evidence-row"><span class="evidence-name">Hash metadata Gateway</span><span class="evidence-value fail">MISMATCH</span></div><div class="evidence-row"><span class="evidence-name">Status perbandingan data client</span><span class="evidence-value wait">NOT CHECKED</span></div><div class="evidence-row"><span class="evidence-name">Aksi pemulihan data client</span><span class="evidence-value wait">TIDAK TERSEDIA</span></div><div class="evidence-row"><span class="evidence-name">Status</span><span class="evidence-value wait">INVESTIGASI SAJA</span></div></div></div><div class="callout info"><span class="callout-icon">↗</span><span>Periksa sumber insiden dan bukti Gateway melalui alur investigasi. Jangan menganggap baris client berubah sebelum ada pemeriksaan CLIENT_SOURCE.</span></div>`;
+    }
+    function renderPreview(item) {
+      return `<div class="callout success"><span class="callout-icon">✓</span><span><strong>Preflight valid.</strong> Event terbaru, hash, Merkle proof, anchor Fabric, dan izin operasi Agent lolos. Hanya field yang berbeda dan diizinkan yang akan dipulihkan.</span></div>${renderCompare(item)}<div class="callout info"><span class="callout-icon">↻</span><span>Recovery membuat perubahan baru pada baris client. Log lama tidak ditimpa; perubahan recovery akan menghasilkan event CDC baru.</span></div><div class="action-row"><button class="button" type="button" data-action="cancel-preview">Batal</button><button class="button primary" type="button" data-action="to-confirm">Lanjut ke konfirmasi →</button></div>`;
+    }
+    function renderConfirm(item) {
+      return `${renderCompare(item)}<div class="section-card"><h3 class="section-title">Konfirmasi operator</h3><label class="form-label" for="reason">Alasan recovery</label><textarea id="reason" maxlength="500" placeholder="Contoh: Memulihkan nama ruangan dari event client tepercaya setelah hasil pemeriksaan sumber…">${esc(reasonDraft)}</textarea><div class="char-count"><span id="reason-count">${reasonDraft.length}</span>/500 karakter · minimal 5</div><label class="confirm-check"><input type="checkbox" id="confirm-check" ${confirmed ? "checked" : ""}><span><strong>Saya sudah meninjau preview.</strong> Saya memahami simulasi ini akan mengubah baris client, kemudian menunggu readback dan CDC.</span></label><div class="callout"><span class="callout-icon">!</span><span>Di sistem produksi, Execute baru boleh dilakukan setelah preflight terbaru tetap valid. Jika data atau bukti berubah, recovery harus diblokir dan diperiksa ulang.</span></div><div class="action-row"><button class="button" type="button" data-action="back-preview">Kembali</button><button class="button" type="button" data-action="cancel-preview">Batal</button><button class="button primary" id="execute-button" type="button" data-action="execute" disabled>Execute recovery →</button></div></div>`;
+    }
+    function renderRunning() {
+      return `<div class="callout info"><span class="callout-icon spin">◌</span><span><strong>Simulasi berjalan.</strong> Halaman sedang memperlihatkan urutan yang harus diverifikasi sebelum incident ditutup.</span></div><div class="progress-list">${progressSteps.map((label, index) => `<div class="progress-item ${index < progressIndex ? "done" : index === progressIndex ? "active" : ""}"><span class="progress-icon">${index < progressIndex ? "✓" : index === progressIndex ? '<span class="spin">◌</span>' : "○"}</span><span>${label}</span></div>`).join("")}</div>`;
+    }
+    function renderSuccess(item) {
+      const latest = history[0];
+      return `<div class="callout success"><span class="callout-icon">✓</span><span><strong>Recovery demo berhasil.</strong> Data saat ini cocok dengan event tepercaya setelah readback dan event CDC simulasi dikonfirmasi.</span></div><div class="section-card"><h3 class="section-title">Hasil simulasi</h3><div class="result-list"><div class="result-row"><span>Baris client</span><span>${esc(item.resource)} · diperbarui</span></div><div class="result-row"><span>Readback Agent</span><span>Hash cocok</span></div><div class="result-row"><span>Event CDC baru</span><span>${esc(latest?.cdcId || "CDC-DEMO")}</span></div><div class="result-row"><span>Bukti & anchor</span><span>Valid · Fabric demo</span></div><div class="result-row"><span>Incident</span><span>Ditandai selesai</span></div></div><p class="body-copy" style="margin:11px 0 0">Perubahan ini simulasi. Pada sistem produksi, incident hanya selesai setelah seluruh bukti hasil recovery diverifikasi.</p></div>${renderCompare(item)}<div class="action-row"><button class="button" type="button" data-action="select-next">Pilih insiden lain</button><button class="button primary" type="button" data-action="tab" data-tab="history">Lihat Recovery history →</button></div>`;
+    }
+    function renderDetail() {
+      const item = selectedIncident();
+      const panel = document.getElementById("detail-panel");
+      if (!item) { panel.innerHTML = '<div class="empty">Pilih insiden dari daftar.</div>'; return; }
+      const scope = item.scope === "CLIENT_SOURCE" ? '<span class="scope-pill client">CLIENT SOURCE</span>' : '<span class="scope-pill gateway">GATEWAY INTEGRITY</span>';
+      let content = "";
+      if (item.scope === "GATEWAY_INTEGRITY") content = renderGateway(item);
+      else if (stage === "preview") content = renderPreview(item);
+      else if (stage === "confirm") content = renderConfirm(item);
+      else if (stage === "running") content = renderRunning();
+      else if (stage === "success") content = renderSuccess(item);
+      else if (item.status === "RESOLVED") content = renderSuccess(item);
+      else content = renderInspect(item);
+      panel.innerHTML = `<div class="panel-head"><div><div class="eyebrow">Recovery preview</div><div class="panel-subtitle">Pemeriksaan dan pemulihan baris data client</div></div><span class="status-pill ${statusClass(item)}">${statusLabel(item)}</span></div><div class="detail-body"><div class="detail-heading"><div><h2>${esc(item.resource)}</h2><p>${esc(item.id)} · ${esc(item.issue)}</p></div></div><div class="incident-meta">${scope}<span class="workspace-tag">TERDETEKSI ${esc(item.detected)}</span></div>${item.scope === "CLIENT_SOURCE" ? renderStepper() : ""}${content}</div>`;
+      updateExecuteButton();
+    }
+    function renderHistory() {
+      const view = document.getElementById("history-view");
+      if (!history.length) {
+        view.innerHTML = '<div class="panel-head"><div><h2 class="panel-title">Recovery history</h2><div class="panel-subtitle">Hasil yang disimulasikan setelah konfirmasi Execute</div></div></div><div class="empty">Belum ada hasil recovery.<br>Pilih insiden yang lolos bukti, lalu jalankan simulasi.</div>';
+        return;
+      }
+      view.innerHTML = `<div class="panel-head"><div><h2 class="panel-title">Recovery history</h2><div class="panel-subtitle">${history.length} hasil demo · tidak dikirim ke sistem</div></div><span class="status-pill resolved">SIMULASI</span></div><div class="history-wrap">${history.map((entry) => `<div class="history-row"><div><div class="history-main">${esc(entry.resource)}</div><div class="history-sub">${esc(entry.id)} · ${esc(entry.time)}</div></div><div><div class="history-col-label">Status</div><div class="history-col-value" style="color:var(--green)">Berhasil · CDC dikonfirmasi</div></div><div><div class="history-col-label">Alasan operator</div><div class="history-col-value">${esc(entry.reason)}</div></div><span class="status-pill resolved">SUCCEEDED</span></div>`).join("")}</div>`;
+    }
+    function render() {
+      renderMetrics(); renderList(); renderDetail(); renderHistory();
+      const incidentsActive = activeTab === "incidents";
+      document.getElementById("incident-view").classList.toggle("hidden", !incidentsActive);
+      document.getElementById("history-view").classList.toggle("hidden", incidentsActive);
+      document.getElementById("tab-incidents").classList.toggle("active", incidentsActive);
+      document.getElementById("tab-history").classList.toggle("active", !incidentsActive);
+      document.getElementById("tab-incidents").setAttribute("aria-selected", String(incidentsActive));
+      document.getElementById("tab-history").setAttribute("aria-selected", String(!incidentsActive));
+    }
+    function updateExecuteButton() {
+      const button = document.getElementById("execute-button");
+      if (button) button.disabled = reasonDraft.trim().length < 5 || !confirmed || running;
+      const count = document.getElementById("reason-count");
+      if (count) count.textContent = reasonDraft.length;
+    }
+    function delay(ms) { return new Promise((resolve) => window.setTimeout(resolve, ms)); }
+    async function runPreflight() {
+      const item = selectedIncident();
+      if (!item || item.scope !== "CLIENT_SOURCE" || item.status === "RESOLVED" || running) return;
+      stage = "checking"; render();
+      await delay(650);
+      const allPassed = Object.values(item.checks).every(Boolean);
+      item.preflight = allPassed ? "VALID" : "BLOCKED";
+      stage = allPassed ? "preview" : "blocked";
+      render();
+    }
+    async function runRecovery() {
+      const item = selectedIncident();
+      if (!item || !item.canRecover || item.preflight !== "VALID" || reasonDraft.trim().length < 5 || !confirmed || running) return;
+      running = true; stage = "running"; progressIndex = 0; render();
+      for (let index = 0; index < progressSteps.length; index += 1) {
+        progressIndex = index; render();
+        await delay(850);
+      }
+      const before = copy(item.current);
+      item.current = copy(item.trusted);
+      item.status = "RESOLVED";
+      item.sourceStatus = "MATCHED";
+      history.unshift({ id: item.id, resource: item.resource, time: nowLabel(), reason: reasonDraft.trim(), cdcId: `CDC-DEMO-${String(Date.now()).slice(-6)}`, before, after: copy(item.current) });
+      running = false; stage = "success"; render();
+    }
+    function resetDemo() {
+      if (!window.confirm("Reset semua insiden dan history demo ke data awal?")) return;
+      incidents = copy(seedIncidents); history = []; selectedId = seedIncidents[0].id; activeTab = "incidents"; stage = "inspect"; progressIndex = -1; reasonDraft = ""; confirmed = false; running = false; render();
+    }
+    document.addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-action]");
+      if (!button || button.disabled) return;
+      const action = button.dataset.action;
+      if (action === "select") { selectedId = button.dataset.id; stage = "inspect"; reasonDraft = ""; confirmed = false; activeTab = "incidents"; }
+      else if (action === "tab") { activeTab = button.dataset.tab; }
+      else if (action === "preflight") { await runPreflight(); return; }
+      else if (action === "to-confirm") { stage = "confirm"; reasonDraft = ""; confirmed = false; }
+      else if (action === "back-preview") { stage = "preview"; }
+      else if (action === "cancel-preview") { stage = "inspect"; reasonDraft = ""; confirmed = false; }
+      else if (action === "execute") { await runRecovery(); return; }
+      else if (action === "reset") { resetDemo(); return; }
+      else if (action === "select-next") { selectedId = incidents.find((item) => item.status === "OPEN" && item.scope === "CLIENT_SOURCE")?.id || incidents[0].id; stage = "inspect"; activeTab = "incidents"; reasonDraft = ""; confirmed = false; }
+      render();
+    });
+    document.addEventListener("input", (event) => {
+      if (event.target.id === "reason") { reasonDraft = event.target.value; updateExecuteButton(); }
+    });
+    document.addEventListener("change", (event) => {
+      if (event.target.id === "confirm-check") { confirmed = event.target.checked; updateExecuteButton(); }
+    });
+    render();
+  </script>
+</body>
+</html>
