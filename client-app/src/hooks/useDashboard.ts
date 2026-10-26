@@ -13,6 +13,7 @@ const integrityTrendRefreshMs = 60_000;
 export const dashboardKeys = {
   all: ["dashboard"] as const,
   overview: ["dashboard", "overview"] as const,
+  externalStats: ["dashboard", "external-stats"] as const,
   tables: ["dashboard", "tables"] as const,
   inventory: ["dashboard", "inventory"] as const,
   latestScan: ["dashboard", "latest-scan"] as const,
@@ -131,4 +132,49 @@ export function useClientRefresh() {
     queryClient.invalidateQueries({ queryKey: dashboardKeys.all }),
     queryClient.invalidateQueries({ queryKey: ["recovery"] }),
   ]);
+}
+
+
+export function useExternalStats() {
+  const { session } = useAuth();
+  return useQuery({
+    queryKey: dashboardKeys.externalStats,
+    queryFn: () => dashboardService.getExternalStats?.(session?.token),
+    enabled: Boolean(session?.token),
+    refetchInterval: liveDashboardRefreshMs,
+  });
+}
+
+export function useRunAgentAudit() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ token, range }: { token?: string; range: VerificationRangeInput }) =>
+      dashboardService.runAgentAudit!(token, range),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: dashboardKeys.overview }),
+        queryClient.invalidateQueries({ queryKey: dashboardKeys.verificationRun }),
+        queryClient.invalidateQueries({ queryKey: dashboardKeys.externalStats }),
+        queryClient.invalidateQueries({ queryKey: ["clientTamperRecords"] }),
+      ]);
+    },
+  });
+}
+
+export function useCreateVerificationRun() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ token, range, batchSize }: { token?: string; range: VerificationRangeInput; batchSize?: number }) =>
+      dashboardService.createVerificationRun!(token, range, batchSize),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: dashboardKeys.overview }),
+        queryClient.invalidateQueries({ queryKey: dashboardKeys.verificationRun }),
+        queryClient.invalidateQueries({ queryKey: dashboardKeys.externalStats }),
+        queryClient.invalidateQueries({ queryKey: ["clientTamperRecords"] }),
+      ]);
+    },
+  });
 }

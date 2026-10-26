@@ -1,4 +1,6 @@
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api").replace(/\/+$/, "");
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "/api").replace(/\/+$/, "");
+const AGENT_BASE_URL = (import.meta.env.VITE_AGENT_BASE_URL || "/agent-api").replace(/\/+$/, "");
+
 export const API_UNAUTHORIZED_EVENT = "auditchain:api-unauthorized";
 
 export class ApiError extends Error {
@@ -43,6 +45,7 @@ async function readResponseBody(response: Response): Promise<unknown> {
   return text;
 }
 
+// Request ke Pintu 1: Gateway (auditchain-api)
 export async function request<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
   const headers = new Headers(options.headers);
   headers.set("Accept", "application/json");
@@ -61,7 +64,7 @@ export async function request<T>(path: string, options: RequestInit = {}, token?
       headers,
     });
   } catch (error) {
-    throw new ApiError("Backend tidak dapat dihubungi.", 0, error);
+    throw new ApiError("Gateway tidak dapat dihubungi.", 0, error);
   }
 
   const payload = await readResponseBody(response);
@@ -69,6 +72,36 @@ export async function request<T>(path: string, options: RequestInit = {}, token?
     if (response.status === 401 && typeof window !== "undefined") {
       window.dispatchEvent(new Event(API_UNAUTHORIZED_EVENT));
     }
+    throw new ApiError(extractMessage(payload, response.status), response.status, payload);
+  }
+
+  return payload as T;
+}
+
+// Request ke Pintu 2: Agent (auditchain-agent)
+export async function agentRequest<T>(path: string, options: RequestInit = {}, token?: string): Promise<T> {
+  const headers = new Headers(options.headers);
+  headers.set("Accept", "application/json");
+
+  if (options.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
+  let response: Response;
+  try {
+    response = await fetch(`${AGENT_BASE_URL}/${path.replace(/^\/+/, "")}`, {
+      ...options,
+      cache: options.method?.toUpperCase() === "GET" || !options.method ? "no-store" : options.cache,
+      headers,
+    });
+  } catch (error) {
+    throw new ApiError("Agent Verifier tidak dapat dihubungi.", 0, error);
+  }
+
+  const payload = await readResponseBody(response);
+  if (!response.ok) {
     throw new ApiError(extractMessage(payload, response.status), response.status, payload);
   }
 
@@ -84,5 +117,14 @@ export const apiClient = {
   },
   put<T>(path: string, body: unknown, token?: string) {
     return request<T>(path, { method: "PUT", body: JSON.stringify(body) }, token);
+  },
+};
+
+export const agentClient = {
+  get<T>(path: string, token?: string) {
+    return agentRequest<T>(path, { method: "GET" }, token);
+  },
+  post<T>(path: string, body: unknown, token?: string) {
+    return agentRequest<T>(path, { method: "POST", body: JSON.stringify(body) }, token);
   },
 };

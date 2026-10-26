@@ -1,6 +1,7 @@
 import type {
 	AuditIssue,
   DashboardOverview,
+  ExternalAuditStatsResponse,
   LatestAuditScan,
   TableInsightsData,
   TableInventoryItem,
@@ -11,6 +12,7 @@ import type {
   VerificationRangeResult,
   VerificationRun,
   WatchlistItem,
+  AgentAuditRunReport,
 } from "@/types/dashboard";
 import type { ClientWorkspace } from "@/types/auth";
 
@@ -25,4 +27,7 @@ export interface DashboardService {
   getLatestScan(): Promise<LatestAuditScan>;
   getTableInsights(): Promise<TableInsightsData>;
 	getIssues(): Promise<AuditIssue[]>;
+  getExternalStats?(token?: string): Promise<ExternalAuditStatsResponse | null>;
+  createVerificationRun?(token: string | undefined, range: VerificationRangeInput, batchSize?: number): Promise<VerificationRun>;
+  runAgentAudit?(token: string | undefined, range: VerificationRangeInput): Promise<AgentAuditRunReport>;
 }

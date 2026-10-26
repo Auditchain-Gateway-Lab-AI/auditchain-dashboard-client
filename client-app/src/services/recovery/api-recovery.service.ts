@@ -1,5 +1,9 @@
 import { apiClient, ApiError } from "@/services/api/client";
 import type {
+  ClientDataTamperRecord,
+  ClientTamperListResponse,
+  ClientTamperQuery,
+  ClientTamperRecoverResponse,
   RecoveryCandidate,
   RecoveryEvent,
   RecoveryEventPage,
@@ -140,6 +144,44 @@ export class ApiRecoveryService implements RecoveryService {
       token,
     );
     return unwrapData(response);
+  }
+
+  async getClientTamperRecords(token?: string, query?: ClientTamperQuery): Promise<ClientTamperListResponse> {
+    if (!token) throw new Error("Session client tidak tersedia.");
+    const params = new URLSearchParams();
+    if (query?.status) params.set("status", query.status);
+    if (query?.table_name) params.set("table_name", query.table_name);
+    if (query?.resource) params.set("resource", query.resource);
+    if (query?.search) params.set("search", query.search);
+    if (query?.page) params.set("page", String(query.page));
+    if (query?.page_size) params.set("page_size", String(query.page_size));
+
+    const qs = params.toString();
+    const endpoint = `/dashboard/client-tampering${qs ? `?${qs}` : ""}`;
+    return apiClient.get<ClientTamperListResponse>(endpoint, token);
+  }
+
+  async getClientTamperRecord(token: string | undefined, id: string): Promise<ClientDataTamperRecord> {
+    if (!token) throw new Error("Session client tidak tersedia.");
+    return apiClient.get<ClientDataTamperRecord>(`/dashboard/client-tampering/${encodeURIComponent(id)}`, token);
+  }
+
+  async recoverClientTamperRecord(token: string | undefined, id: string): Promise<ClientTamperRecoverResponse> {
+    if (!token) throw new Error("Session client tidak tersedia.");
+    return apiClient.post<ClientTamperRecoverResponse>(
+      `/dashboard/client-tampering/${encodeURIComponent(id)}/recover`,
+      {},
+      token,
+    );
+  }
+
+  async dismissClientTamperRecord(token: string | undefined, id: string, notes?: string): Promise<ClientDataTamperRecord> {
+    if (!token) throw new Error("Session client tidak tersedia.");
+    return apiClient.post<ClientDataTamperRecord>(
+      `/dashboard/client-tampering/${encodeURIComponent(id)}/dismiss`,
+      { notes: notes || "" },
+      token,
+    );
   }
 }
 

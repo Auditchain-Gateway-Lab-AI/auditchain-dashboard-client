@@ -1,8 +1,9 @@
-import { apiClient } from "@/services/api/client";
+import { apiClient, agentClient } from "@/services/api/client";
 import type { ClientWorkspace } from "@/types/auth";
 import type {
   AuditAction,
   DashboardOverview,
+  ExternalAuditStatsResponse,
   TableInventoryItem,
   TableVerificationSummary,
   TrendPoint,
@@ -12,6 +13,7 @@ import type {
   VerificationRangeResult,
   VerificationRun,
   VerificationRunStatus,
+  AgentAuditRunReport,
 } from "@/types/dashboard";
 
 interface DashboardStatsData {
@@ -40,6 +42,24 @@ interface DashboardStatsData {
     checked_logs?: number;
   };
   table_verify_results?: Record<string, Record<string, unknown>> | null;
+  external_audit?: {
+    total_audited?: number;
+    total_valid?: number;
+    total_tampered?: number;
+    total_pending?: number;
+    integrity_score?: number | string | null;
+    last_audited_at?: string | null;
+    table_verify_results?: Record<string, Record<string, unknown>> | null;
+  };
+  external_total_audited?: number;
+  external_total_valid?: number;
+  external_total_tampered?: number;
+  external_total_pending?: number;
+  external_integrity_score?: number | string | null;
+  external_last_audited_at?: string | null;
+  external_table_results?: Record<string, Record<string, unknown>> | null;
+  open_tamper_incidents?: number;
+  total_recoveries?: number;
   trend?: {
     range?: TrendRange;
     points?: Array<{
@@ -266,10 +286,29 @@ export class ApiDashboardService {
     const totalLogs = asNumber(data.total_logs ?? response.total_logs);
     const anchoredLogs = asNumber(data.anchored_logs ?? data.total_anchored ?? response.anchored_logs);
     const pendingLogs = asNumber(data.pending_logs ?? data.total_pending ?? response.pending_logs);
-    const valid = asNumber(data.total_valid);
-    const tampered = asNumber(data.total_tampered);
-    const totalVerifications = asNumber(data.total_verifications);
+
+    // Prioritaskan metrik Audit External (Client Database vs Offchain Logs & Blockchain)
+    const valid = asNumber(data.external_total_valid ?? data.external_audit?.total_valid ?? data.total_valid);
+    const tampered = asNumber(data.external_total_tampered ?? data.external_audit?.total_tampered ?? data.total_tampered);
+    const totalVerifications = asNumber(
+      data.external_total_audited ?? data.external_audit?.total_audited ?? data.total_verifications ?? (valid + tampered),
+    );
     const verificationDenominator = totalVerifications || valid + tampered;
+
+    const rawIntegrityScore = data.external_integrity_score ?? data.external_audit?.integrity_score ?? data.integrity_score;
+    const integrityScore = verificationDenominator > 0 || (rawIntegrityScore !== undefined && rawIntegrityScore !== null)
+      ? asOptionalNumber(rawIntegrityScore)
+      : null;
+
+    const lastScan = formatDateTime(
+      data.external_last_audited_at ?? data.external_audit?.last_audited_at ?? data.last_verified_at,
+    );
+
+    const tableResults = data.external_table_results ?? data.external_audit?.table_verify_results ?? data.table_verify_results;
+
+    const verificationPending = asNumber(
+      data.external_total_pending ?? data.external_audit?.total_pending ?? data.total_verify_pending,
+    );
 
     return {
       tenant: workspace?.name || data.client_id || "Client workspace",
@@ -278,7 +317,7 @@ export class ApiDashboardService {
       anchoredLogs,
       pendingLogs,
       anchorPercentage: asNumber(data.anchor_percentage),
-      integrityScore: verificationDenominator > 0 ? asOptionalNumber(data.integrity_score) : null,
+      integrityScore,
       totalVerifications,
       valid,
       validPercentage: verificationDenominator > 0 ? (valid / verificationDenominator) * 100 : 0,
@@ -286,17 +325,19 @@ export class ApiDashboardService {
       tamperedPercentage: verificationDenominator > 0 ? (tampered / verificationDenominator) * 100 : 0,
       logsToday: asNumber(data.logs_today),
       monitoredTables: asOptionalNumber(data.total_tables_audited),
-      lastScan: formatDateTime(data.last_verified_at),
-      verificationPending: asNumber(data.total_verify_pending),
+      lastScan,
+      verificationPending,
       verificationUnavailable: asNumber(data.total_agent_error) + asNumber(data.total_fabric_error),
-      rowsVerified: asNumber(data.total_rows_verified),
-      tableVerification: mapTableVerification(data.table_verify_results),
+      rowsVerified: asNumber(data.total_rows_verified ?? totalVerifications),
+      tableVerification: mapTableVerification(tableResults),
       latestIntegrityCheck: {
         source: data.integrity_check?.source?.trim() || null,
         checkedAt: data.integrity_check?.checked_at ? formatDateTime(data.integrity_check.checked_at) : null,
         checkedLogs: asNumber(data.integrity_check?.checked_logs),
         runId: data.integrity_check?.run_id || undefined,
       },
+      openTamperIncidents: asOptionalNumber(data.open_tamper_incidents),
+      totalRecoveries: asOptionalNumber(data.total_recoveries),
     };
   }
 
@@ -340,8 +381,69 @@ export class ApiDashboardService {
   async getLatestVerificationRun(token?: string): Promise<VerificationRun | null> {
     if (!token) throw new Error("Session client tidak tersedia.");
 
-    const response = await apiClient.get<BackendVerificationRunResponse>("/dashboard/verification-runs/latest", token);
+    const response = await apiClient.get<BackendVerificationRunResponse>(
+      "/dashboard/verification-runs/latest?run_type=EXTERNAL",
+      token,
+    );
     return response.data ? mapVerificationRun(response.data) : null;
+  }
+
+  async getExternalStats(token?: string): Promise<ExternalAuditStatsResponse | null> {
+    if (!token) throw new Error("Session client tidak tersedia.");
+
+    const response = await apiClient.get<{ message?: string; data?: ExternalAuditStatsResponse }>(
+      "/dashboard/stats/external",
+      token,
+    );
+    return response.data ?? null;
+  }
+
+  async createVerificationRun(
+    token: string | undefined,
+    range: VerificationRangeInput,
+    batchSize = 100,
+  ): Promise<VerificationRun> {
+    if (!token) throw new Error("Session client tidak tersedia.");
+
+    const response = await apiClient.post<{ message?: string; data: BackendVerificationRun }>(
+      "/dashboard/verification-runs",
+      {
+        from: range.from,
+        to: range.to,
+        batch_size: batchSize,
+      },
+      token,
+    );
+
+    return mapVerificationRun(response.data);
+  }
+
+  async runAgentAudit(
+    token: string | undefined,
+    range: VerificationRangeInput,
+  ): Promise<AgentAuditRunReport> {
+    if (!token) throw new Error("Session client tidak tersedia.");
+
+    // 1. Panggil langsung Pintu 2: auditchain-agent (POST /audit/run)
+    const report = await agentClient.post<AgentAuditRunReport>(
+      "/audit/run",
+      {
+        from: range.from,
+        to: range.to,
+        auto_recover: false,
+      },
+      token,
+    );
+
+    // 2. Pastikan hasil audit langsung tersimpan di Pintu 1: Gateway (/api/agent/audit-report)
+    // agar tabel insiden (client_data_tamper_records) dan statistik dashboard segera ter-update
+    try {
+      await apiClient.post("/agent/audit-report", report, token);
+    } catch (submitErr) {
+      console.warn("Gagal submit audit report ke Gateway:", submitErr);
+    }
+
+    return report;
   }
 
   async estimateVerifyRange(token: string | undefined, range: VerificationRangeInput): Promise<VerificationRangeEstimate> {

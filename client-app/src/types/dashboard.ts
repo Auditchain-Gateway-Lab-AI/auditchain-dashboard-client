@@ -24,6 +24,8 @@ export interface DashboardOverview {
   rowsVerified?: number;
   tableVerification?: Record<string, TableVerificationSummary>;
   latestIntegrityCheck?: IntegrityCheckSummary;
+  openTamperIncidents?: number | null;
+  totalRecoveries?: number | null;
 }
 
 export interface IntegrityCheckSummary {
@@ -152,4 +154,41 @@ export interface AuditIssue {
   description: string;
   detectedAt: string;
   actor: string;
+}
+
+export interface ExternalAuditStatsResponse {
+  id?: number;
+  client_id?: string;
+  total_audited: number;
+  total_valid: number;
+  total_tampered: number;
+  total_pending: number;
+  integrity_score: number;
+  last_audited_at: string | null;
+  total_recoveries: number;
+  total_tamper_incidents: number;
+  open_tamper_incidents: number;
+  table_verify_results?: Record<string, unknown> | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AgentAuditRunReport {
+  run_id?: string;
+  from?: string;
+  to?: string;
+  total_logs?: number;
+  audited_logs?: number;
+  historical_skipped?: number;
+  data_valid?: number;
+  data_tampered?: number;
+  data_not_found?: number;
+  data_error?: number;
+  blockchain_valid?: number;
+  blockchain_tampered?: number;
+  blockchain_pending?: number;
+  blockchain_skipped?: number;
+  blockchain_error?: number;
+  auto_recovered_count?: number;
+  duration?: string;
 }

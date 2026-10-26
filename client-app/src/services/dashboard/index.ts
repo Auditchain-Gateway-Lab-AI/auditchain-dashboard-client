@@ -27,4 +27,13 @@ export const dashboardService: DashboardService = {
   getLatestScan: () => mockDashboardService.getLatestScan(),
   getTableInsights: () => mockDashboardService.getTableInsights(),
   getIssues: () => mockDashboardService.getIssues(),
+  getExternalStats: (token) => dashboardMockEnabled
+    ? mockDashboardService.getExternalStats!(token)
+    : apiDashboardService.getExternalStats(token),
+  createVerificationRun: (token, range, batchSize) => dashboardMockEnabled
+    ? mockDashboardService.createVerificationRun!(token, range, batchSize)
+    : apiDashboardService.createVerificationRun(token, range, batchSize),
+  runAgentAudit: (token, range) => dashboardMockEnabled
+    ? mockDashboardService.runAgentAudit!(token, range)
+    : apiDashboardService.runAgentAudit(token, range),
 };
