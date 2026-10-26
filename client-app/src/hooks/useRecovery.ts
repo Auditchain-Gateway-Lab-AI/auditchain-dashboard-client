@@ -1,9 +1,10 @@
 import { useCallback } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError } from "@/services/api/client";
 import { recoveryService } from "@/services/recovery";
+import type { ClientTamperQuery } from "@/types/recovery";
 
 const activeRequestStatuses = new Set(["PENDING_EXECUTION", "EXECUTING", "APPLIED_AWAITING_CDC"]);
 const recoveryPollMs = 4_000;
@@ -84,4 +85,54 @@ export function useRecoveryRefresh() {
     () => queryClient.invalidateQueries({ queryKey: recoveryKeys.all(session?.user.workspace.id) }),
     [queryClient, session?.user.workspace.id],
   );
+}
+
+
+export function useClientTamperRecords(query?: ClientTamperQuery) {
+  const { session } = useAuth();
+  const token = session?.token;
+  const workspaceId = session?.user.workspace.id;
+
+  return useQuery({
+    queryKey: ["recovery", workspaceId, "client-tampering", query],
+    queryFn: () => recoveryService.getClientTamperRecords?.(token, query),
+    enabled: Boolean(token),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useRecoverClientTamper() {
+  const queryClient = useQueryClient();
+  const { session } = useAuth();
+  const workspaceId = session?.user.workspace.id;
+
+  return useMutation({
+    mutationFn: ({ id }: { id: string }) =>
+      recoveryService.recoverClientTamperRecord!(session?.token, id),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: recoveryKeys.all(workspaceId) }),
+        queryClient.invalidateQueries({ queryKey: ["recovery", workspaceId, "client-tampering"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]);
+    },
+  });
+}
+
+export function useDismissClientTamper() {
+  const queryClient = useQueryClient();
+  const { session } = useAuth();
+  const workspaceId = session?.user.workspace.id;
+
+  return useMutation({
+    mutationFn: ({ id, notes }: { id: string; notes?: string }) =>
+      recoveryService.dismissClientTamperRecord!(session?.token, id, notes),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: recoveryKeys.all(workspaceId) }),
+        queryClient.invalidateQueries({ queryKey: ["recovery", workspaceId, "client-tampering"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      ]);
+    },
+  });
 }

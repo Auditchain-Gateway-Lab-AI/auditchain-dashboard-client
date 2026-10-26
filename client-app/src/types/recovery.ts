@@ -174,3 +174,57 @@ export interface RecoveryExecutionItem {
   event?: RecoveryEvent;
   error?: string;
 }
+
+export interface ClientDataTamperRecord {
+  id: string;
+  client_id: string;
+  run_id?: string;
+  resource: string;
+  table_name: string;
+  record_id: string;
+  log_id: string;
+  action?: string;
+  expected_hash: string;
+  actual_hash: string;
+  discrepancies?: string | Array<{ field?: string; client_value?: unknown; offchain_value?: unknown }>;
+  blockchain_tx_id?: string;
+  status: "OPEN" | "RECOVERED" | "DISMISSED" | string;
+  auto_recovered: boolean;
+  recovery_error?: string;
+  detected_at: string;
+  last_confirmed_at?: string;
+  resolved_at?: string;
+  resolved_by?: string;
+  resolution_notes?: string;
+}
+
+export interface ClientTamperQuery {
+  status?: string;
+  table_name?: string;
+  resource?: string;
+  search?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface ClientTamperSummaryCounts {
+  open_count: number;
+  recovered_count: number;
+  dismissed_count: number;
+  total_count: number;
+}
+
+export interface ClientTamperListResponse {
+  records: ClientDataTamperRecord[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  summary: ClientTamperSummaryCounts;
+}
+
+export interface ClientTamperRecoverResponse {
+  record: ClientDataTamperRecord;
+  result?: unknown;
+  message: string;
+}

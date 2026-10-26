@@ -1,4 +1,8 @@
 import type {
+  ClientDataTamperRecord,
+  ClientTamperListResponse,
+  ClientTamperQuery,
+  ClientTamperRecoverResponse,
   RecoveryCandidate,
   RecoveryEvent,
   RecoveryEventPage,
@@ -26,4 +30,8 @@ export interface RecoveryService {
   executeRequest(token: string | undefined, requestId: string): Promise<RecoveryRequest>;
   getRequest(token: string | undefined, requestId: string): Promise<RecoveryRequest>;
   getEvent(token: string | undefined, eventId: string): Promise<RecoveryEvent>;
+  getClientTamperRecords?(token?: string, query?: ClientTamperQuery): Promise<ClientTamperListResponse>;
+  getClientTamperRecord?(token: string | undefined, id: string): Promise<ClientDataTamperRecord>;
+  recoverClientTamperRecord?(token: string | undefined, id: string): Promise<ClientTamperRecoverResponse>;
+  dismissClientTamperRecord?(token: string | undefined, id: string, notes?: string): Promise<ClientDataTamperRecord>;
 }

@@ -1,3 +1,7 @@
+import { useState } from "react";
+import { Play } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { VerifyRangeModal } from "@/components/dashboard/VerifyRangeModal";
 import { DashboardSkeleton } from "@/components/dashboard/DashboardSkeleton";
 import { IntegrityTrend } from "@/components/dashboard/IntegrityTrend";
 import { LatestAuditScan } from "@/components/dashboard/LatestAuditScan";
@@ -15,6 +19,7 @@ import { formatTime } from "@/lib/utils";
 import { dashboardMockEnabled } from "@/services/dashboard";
 
 export function MonitorPage() {
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
   const dashboard = useDashboardData();
   const refresh = useDashboardRefresh();
 
@@ -37,7 +42,17 @@ export function MonitorPage() {
             <span className="size-1.5 rounded-full bg-success" />
             Updated <span className="font-mono font-semibold text-ink-dim">{formatTime(overview.dataUpdatedAt || Date.now())}</span>
           </div>
-          <span className="font-mono text-[9px]">Tenant-scoped server snapshot</span>
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[9px]">Tenant-scoped server snapshot</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowVerifyModal(true)}
+              className="h-7 gap-1.5 border-brand-bright/40 bg-brand/10 text-[11px] font-semibold text-brand-bright hover:bg-brand/20 transition-colors"
+            >
+              <Play className="size-3 fill-brand-bright/30" /> Uji Verifikasi Range
+            </Button>
+          </div>
         </div>
       )}
       <OverviewStats data={overview.data} />
@@ -58,7 +73,7 @@ export function MonitorPage() {
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">
             <div className="xl:col-span-5"><TableInventory data={inventory.data ?? []} overview={overview.data} /></div>
             <div className="xl:col-span-4"><IntegrityTrend /></div>
-            <div className="xl:col-span-3"><VerificationSnapshot data={overview.data} run={verificationRun.data ?? null} /></div>
+            <div className="xl:col-span-3"><VerificationSnapshot data={overview.data} run={verificationRun.data ?? null} onOpenVerifyModal={() => setShowVerifyModal(true)} /></div>
           </div>
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">
             <div className="xl:col-span-5"><LiveTableInsights inventory={inventory.data ?? []} overview={overview.data} /></div>
@@ -66,6 +81,7 @@ export function MonitorPage() {
           </div>
         </>
       )}
+      <VerifyRangeModal isOpen={showVerifyModal} onClose={() => setShowVerifyModal(false)} />
     </main>
   );
 }

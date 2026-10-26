@@ -1,11 +1,12 @@
-import { Clock3, LoaderCircle, ScanLine, ServerCog, ShieldCheck } from "lucide-react";
+import { Clock3, LoaderCircle, Play, ScanLine, ServerCog, ShieldCheck } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatNumber } from "@/lib/utils";
 import type { DashboardOverview, VerificationRun } from "@/types/dashboard";
 
-export function VerificationSnapshot({ data, run }: { data: DashboardOverview; run?: VerificationRun | null }) {
+export function VerificationSnapshot({ data, run, onOpenVerifyModal }: { data: DashboardOverview; run?: VerificationRun | null; onOpenVerifyModal?: () => void }) {
   const hasChecks = data.totalVerifications > 0;
   const runActive = run?.status === "QUEUED" || run?.status === "RUNNING";
   const runTone: "danger" | "success" | "info" = run?.status === "FAILED"
@@ -57,6 +58,16 @@ export function VerificationSnapshot({ data, run }: { data: DashboardOverview; r
               {latestCheck.checkedLogs > 0 && <span>{formatNumber(latestCheck.checkedLogs)} logs</span>}
             </div>
           </div>
+        )}
+        {onOpenVerifyModal && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onOpenVerifyModal}
+            className="w-full gap-1.5 border-brand-bright/30 bg-brand/5 text-xs text-brand-bright hover:bg-brand/15"
+          >
+            <Play className="size-3 text-brand-bright" /> Uji Verifikasi Range
+          </Button>
         )}
         {run && (
           <div className="mt-auto border border-line bg-elevated px-3 py-2.5">

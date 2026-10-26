@@ -17,3 +17,11 @@ export function formatTime(timestamp: number) {
     hour12: false,
   }).format(timestamp);
 }
+
+export function formatDate(value?: string | number | Date | null) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? String(value)
+    : new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
