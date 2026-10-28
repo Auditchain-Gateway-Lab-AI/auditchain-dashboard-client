@@ -1,6 +1,6 @@
 import { LogOut, RotateCw, ShieldCheck } from "lucide-react";
 import type { ReactNode } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
@@ -16,6 +16,7 @@ interface DashboardHeaderProps {
 
 export function DashboardHeader({ tenant, organization, updatedAt, isRefreshing, onRefresh }: DashboardHeaderProps) {
   const { session, logout } = useAuth();
+  const isRecovery = useLocation().pathname.startsWith("/recovery");
   const avatarLabel = getInitials(session?.user.displayName);
 
   return (
@@ -45,19 +46,19 @@ export function DashboardHeader({ tenant, organization, updatedAt, isRefreshing,
         </nav>
 
         <div className="flex items-center gap-1.5">
-          <div className="mr-1 hidden text-right leading-tight md:block">
+          {!isRecovery && <div className="mr-1 hidden text-right leading-tight md:block">
             <div className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">
               Updated <span className="font-semibold text-ink-dim">{formatTime(updatedAt)}</span>
             </div>
             <div className="mt-0.5 flex items-center justify-end gap-1.5 text-[9px] uppercase tracking-[0.09em] text-ink-faint">
               <span className="size-1.5 rounded-full bg-success animate-pulse" /> Auto refresh 30s
             </div>
-          </div>
+          </div>}
 
-          <Button variant="outline" size="sm" onClick={onRefresh} disabled={isRefreshing} aria-label="Refresh dashboard">
+          {!isRecovery && <Button variant="outline" size="sm" onClick={onRefresh} disabled={isRefreshing} aria-label="Refresh dashboard">
             <RotateCw className={cn("size-3.5", isRefreshing && "animate-spin")} />
             <span className="hidden lg:inline">Refresh</span>
-          </Button>
+          </Button>}
 
           <div className="mx-1 hidden h-7 w-px bg-line sm:block" />
           <div className="hidden items-center gap-2 sm:flex">
@@ -73,7 +74,7 @@ export function DashboardHeader({ tenant, organization, updatedAt, isRefreshing,
         </div>
       </div>
       <div className="flex items-center gap-2 overflow-x-auto border-t border-line px-3 py-1.5 text-[9px] uppercase tracking-[0.12em] text-ink-faint sm:hidden">
-        <div className="flex shrink-0 items-center gap-1.5"><ShieldCheck className="size-3 text-success" /> {tenant} · Updated {formatTime(updatedAt)}</div>
+        <div className="flex shrink-0 items-center gap-1.5"><ShieldCheck className="size-3 text-success" /> {tenant}{!isRecovery && <> · Updated {formatTime(updatedAt)}</>}</div>
         <div className="ml-auto flex shrink-0 items-center gap-1 rounded-md border border-line bg-ground p-0.5 normal-case tracking-normal">
           <PortalNavLink to="/monitor" compact>Monitor</PortalNavLink>
           <PortalNavLink to="/recovery" compact>Recovery</PortalNavLink>

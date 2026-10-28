@@ -1,11 +1,12 @@
-import { Eye, Filter, LoaderCircle, RefreshCw, Search, ShieldCheck, X } from "lucide-react";
-import { useMemo } from "react";
+import { Check, ChevronDown, Eye, Filter, LoaderCircle, Search, ShieldCheck, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/panel-state";
-import { cn, formatDate } from "@/lib/utils";
+import { parseClientDiscrepancies, formatRecoveryDate } from "@/components/recovery/client-tamper-utils";
+import { cn } from "@/lib/utils";
 import type { ClientDataTamperRecord, ClientTamperSummaryCounts } from "@/types/recovery";
 
 interface ClientTamperTableProps {
@@ -22,292 +23,83 @@ interface ClientTamperTableProps {
   onRecover: (record: ClientDataTamperRecord) => void;
   recoveringId: string | null;
   isLoading: boolean;
-  onRefresh: () => void;
 }
 
-function shortHash(hash?: string) {
-  if (!hash) return "—";
-  if (hash.length <= 16) return hash;
-  return `${hash.slice(0, 8)}…${hash.slice(-6)}`;
-}
-
-export function ClientTamperTable({
-  records,
-  summary,
-  total,
-  statusFilter,
-  onStatusChange,
-  searchQuery,
-  onSearchChange,
-  tableFilter,
-  onTableChange,
-  onInspect,
-  onRecover,
-  recoveringId,
-  isLoading,
-  onRefresh,
-}: ClientTamperTableProps) {
-  // Extract unique table names
+export function ClientTamperTable({ records, summary, total, statusFilter, onStatusChange, searchQuery, onSearchChange, tableFilter, onTableChange, onInspect, onRecover, recoveringId, isLoading }: ClientTamperTableProps) {
   const availableTables = useMemo(() => {
-    const set = new Set<string>();
-    for (const r of records) {
-      if (r.table_name) set.add(r.table_name.toUpperCase());
-    }
-    return Array.from(set).sort();
-  }, [records]);
+    const tables = new Set(records.map((record) => record.table_name?.toUpperCase()).filter(Boolean) as string[]);
+    if (tableFilter) tables.add(tableFilter.toUpperCase());
+    return Array.from(tables).sort();
+  }, [records, tableFilter]);
 
-  const openCount = summary?.open_count ?? records.filter((r) => r.status === "OPEN").length;
-  const recoveredCount = summary?.recovered_count ?? records.filter((r) => r.status === "RECOVERED").length;
-  const dismissedCount = summary?.dismissed_count ?? records.filter((r) => r.status === "DISMISSED").length;
+  const openCount = summary?.open_count ?? records.filter((record) => record.status === "OPEN").length;
+  const recoveredCount = summary?.recovered_count ?? records.filter((record) => record.status === "RECOVERED").length;
+  const dismissedCount = summary?.dismissed_count ?? records.filter((record) => record.status === "DISMISSED").length;
   const totalCount = summary?.total_count ?? total;
+  const hasFilters = Boolean(searchQuery || tableFilter || statusFilter !== "ALL");
 
   return (
-    <div className="space-y-3">
-      {/* Search & Filter Controls */}
-      <section className="space-y-3 rounded-lg border border-line bg-panel p-3" aria-label="Incident filters">
-        <div className="flex flex-wrap gap-2">
-          <label className="flex min-w-56 flex-1 items-center gap-2 rounded-lg border border-line-strong bg-ground px-3">
-            <Search className="size-4 text-ink-faint" />
-            <input
-              value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="Cari resource (misal: RUANGAN:1811), nama tabel, atau record ID..."
-              className="h-9 w-full bg-transparent text-xs text-ink outline-none placeholder:text-ink-faint"
-              aria-label="Cari rekaman tamper"
-            />
+    <div className="space-y-4">
+      <section className="space-y-3 rounded-xl border border-line bg-panel p-4" aria-label="Incident filters">
+        <div className="flex flex-wrap gap-3">
+          <label className="flex min-w-60 flex-1 items-center gap-2.5 rounded-lg border border-line-strong bg-ground px-3.5 focus-within:border-accent/70 focus-within:ring-2 focus-within:ring-accent/20">
+            <Search className="size-4 shrink-0 text-ink-dim" />
+            <input value={searchQuery} onChange={(event) => onSearchChange(event.target.value)} placeholder="Search resource, table, or record ID…" className="h-11 w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink-faint" aria-label="Search tamper incidents" />
           </label>
-
-          <label className="flex items-center gap-2 rounded-lg border border-line bg-ground px-2.5 text-[10px] text-ink-faint">
-            <Filter className="size-3.5" />
-            <span>Tabel:</span>
-            <select
-              value={tableFilter}
-              onChange={(e) => onTableChange(e.target.value)}
-              className="h-9 bg-transparent text-xs text-ink outline-none"
-            >
-              <option value="">Semua Tabel</option>
-              {availableTables.map((tbl) => (
-                <option key={tbl} value={tbl}>
-                  {tbl}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <Button variant="outline" size="sm" onClick={onRefresh} disabled={isLoading}>
-            <RefreshCw className={cn("size-3.5", isLoading && "animate-spin")} />
-            Segarkan
-          </Button>
+          <TableSelect value={tableFilter} options={availableTables} onChange={onTableChange} />
         </div>
 
-        {/* Status Pills */}
-        <div className="flex flex-wrap items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-line pt-3">
           {[
-            { id: "ALL", label: "Semua Status", count: totalCount },
-            { id: "OPEN", label: "Terdeteksi (Open)", count: openCount, tone: "text-danger" },
-            { id: "RECOVERED", label: "Sudah Dipulihkan", count: recoveredCount, tone: "text-success" },
-            { id: "DISMISSED", label: "Diabaikan", count: dismissedCount, tone: "text-ink-dim" },
-          ].map(({ id, label, count, tone }) => (
-            <button
-              key={id}
-              type="button"
-              aria-pressed={statusFilter === id}
-              onClick={() => onStatusChange(id)}
-              className={cn(
-                "rounded-md px-2.5 py-1.5 text-[10px] font-semibold transition-colors",
-                statusFilter === id ? "bg-navy-bright/25 text-ink ring-1 ring-brand-bright/40" : "text-ink-dim hover:bg-elevated"
-              )}
-            >
-              <span className={tone}>{label}</span>
-              <span className="ml-1.5 font-mono text-ink-faint">({count})</span>
-            </button>
-          ))}
-
-          {(searchQuery || tableFilter || statusFilter !== "ALL") && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                onSearchChange("");
-                onTableChange("");
-                onStatusChange("ALL");
-              }}
-            >
-              <X className="size-3" /> Reset Filter
-            </Button>
-          )}
+            { id: "ALL", label: "All statuses", count: totalCount },
+            { id: "OPEN", label: "Open", count: openCount, tone: "text-danger" },
+            { id: "RECOVERED", label: "Recovered", count: recoveredCount, tone: "text-success" },
+            { id: "DISMISSED", label: "Dismissed", count: dismissedCount, tone: "text-ink-dim" },
+          ].map(({ id, label, count, tone }) => <button key={id} type="button" aria-pressed={statusFilter === id} onClick={() => onStatusChange(id)} className={cn("rounded-lg px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70", statusFilter === id ? "bg-navy-bright/25 text-ink ring-1 ring-brand-bright/35" : "text-ink-dim hover:bg-elevated hover:text-ink")}>
+            <span className={tone}>{label}</span><span className="ml-2 font-mono text-xs text-ink-dim">{count}</span>
+          </button>)}
+          {hasFilters && <Button variant="ghost" size="sm" onClick={() => { onSearchChange(""); onTableChange(""); onStatusChange("ALL"); }}><X className="size-4" /> Clear filters</Button>}
         </div>
       </section>
 
-      {/* Main Table */}
-      <Card className="overflow-hidden">
-        <CardHeader className="flex flex-row items-center justify-between">
+      <Card className="overflow-hidden rounded-xl">
+        <CardHeader className="flex flex-col items-start justify-between gap-2 p-4 sm:flex-row sm:items-center">
           <div>
-            <CardTitle>Insiden Manipulasi Database Klien (External Audit)</CardTitle>
-            <p className="mt-1 text-[10px] text-ink-faint">
-              Daftar anomali data aktual database klien vs log offchain & blockchain. Pemulihan langsung menulis ulang baris sah ke database klien melalui Agent.
-            </p>
+            <CardTitle className="text-sm font-semibold normal-case tracking-normal text-ink">Client data integrity incidents</CardTitle>
+            <p className="mt-1 max-w-3xl text-xs leading-relaxed text-ink-dim">Review differences between client database rows and verified off-chain records. Select an incident to inspect its evidence.</p>
           </div>
-          <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-ink-faint">
-            {records.length} ditampilkan • {total} total
-          </span>
+          <span className="shrink-0 font-mono text-xs text-ink-dim">{records.length} shown · {total} total</span>
         </CardHeader>
         <CardContent className="p-0">
-          {records.length === 0 ? (
-            <EmptyState
-              message={
-                isLoading
-                  ? "Memuat data insiden manipulasi..."
-                  : totalCount === 0
-                  ? "Bagus sekali! Tidak ada manipulasi data klien yang terdeteksi saat ini."
-                  : "Tidak ada insiden yang cocok dengan filter yang dipilih."
-              }
-            />
-          ) : (
+          {records.length === 0 ? <EmptyState message={isLoading ? "Loading client integrity incidents…" : totalCount === 0 ? "No client data integrity incidents have been detected." : "No incidents match the selected filters."} /> : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[850px] border-collapse text-xs">
-                <thead>
-                  <tr className="border-b border-line bg-ground/50 text-[9px] uppercase tracking-[0.09em] text-ink-faint">
-                    <th className="px-3.5 py-2.5 text-left font-semibold">Resource / Tabel</th>
-                    <th className="px-3.5 py-2.5 text-left font-semibold">Perbedaan Nilai (Diff)</th>
-                    <th className="px-3.5 py-2.5 text-left font-semibold">Hash Offchain vs Klien</th>
-                    <th className="px-3.5 py-2.5 text-left font-semibold">Waktu Deteksi</th>
-                    <th className="px-3.5 py-2.5 text-left font-semibold">Status</th>
-                    <th className="px-3.5 py-2.5 text-right font-semibold">Aksi</th>
-                  </tr>
-                </thead>
+              <table className="w-full min-w-[880px] border-collapse text-sm">
+                <thead><tr className="border-b border-line bg-ground/60 text-left text-xs font-semibold uppercase tracking-wide text-ink-dim">
+                  <th scope="col" className="px-4 py-3">Resource / table</th><th scope="col" className="px-4 py-3">Changed columns</th><th scope="col" className="px-4 py-3">Reference / client hash</th><th scope="col" className="px-4 py-3">Detected</th><th scope="col" className="px-4 py-3">Status</th><th scope="col" className="px-4 py-3 text-right">Actions</th>
+                </tr></thead>
                 <tbody className="divide-y divide-line">
                   {records.map((record) => {
                     const isRowRecovering = recoveringId === record.id;
                     const isOpen = record.status === "OPEN";
+                    const { discrepancies } = parseClientDiscrepancies(record);
 
-                    // Discrepancy brief
-                    let discCount = 0;
-                    if (Array.isArray(record.discrepancies)) discCount = record.discrepancies.length;
-                    else if (typeof record.discrepancies === "string") {
-                      try {
-                        const parsed = JSON.parse(record.discrepancies);
-                        if (Array.isArray(parsed)) discCount = parsed.length;
-                      } catch {}
-                    }
-
-                    return (
-                      <tr key={record.id} className="hover:bg-elevated/40 transition-colors">
-                        {/* Resource / Table */}
-                        <td className="px-3.5 py-3">
-                          <code className="font-mono font-semibold text-brand-bright">{record.resource}</code>
-                          <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-ink-dim">
-                            <span className="font-semibold text-ink">{record.table_name}</span>
-                            <span>•</span>
-                            <span>ID: {record.record_id}</span>
-                            {record.action && (
-                              <>
-                                <span>•</span>
-                                <span className="font-mono text-ink-faint">{record.action}</span>
-                              </>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* Diff Summary */}
-                        <td className="px-3.5 py-3">
-                          {discCount > 0 ? (
-                            <div className="flex items-center gap-1.5">
-                              <Badge tone="danger">{discCount} kolom berbeda</Badge>
-                              <span className="text-[10px] text-ink-dim">(lihat detail)</span>
-                            </div>
-                          ) : (
-                            <span className="text-[10px] text-ink-dim">Hash baris data berbeda</span>
-                          )}
-                          {record.recovery_error && (
-                            <small className="mt-1 block max-w-48 text-[10px] text-warning truncate" title={record.recovery_error}>
-                              Error: {record.recovery_error}
-                            </small>
-                          )}
-                        </td>
-
-                        {/* Hash Comparison */}
-                        <td className="px-3.5 py-3">
-                          <div className="space-y-0.5 font-mono text-[10px]">
-                            <div className="flex items-center gap-1 text-success">
-                              <span className="w-10 uppercase text-ink-faint">Offchain:</span>
-                              <code>{shortHash(record.expected_hash)}</code>
-                            </div>
-                            <div className="flex items-center gap-1 text-danger">
-                              <span className="w-10 uppercase text-ink-faint">Klien:</span>
-                              <code>{shortHash(record.actual_hash)}</code>
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* Detected At */}
-                        <td className="px-3.5 py-3 text-ink-dim text-[11px]">
-                          <div>{formatDate(record.detected_at)}</div>
-                          {record.last_confirmed_at && (
-                            <small className="block text-[9px] text-ink-faint">
-                              Scan: {formatDate(record.last_confirmed_at)}
-                            </small>
-                          )}
-                        </td>
-
-                        {/* Status */}
-                        <td className="px-3.5 py-3">
-                          <Badge
-                            tone={
-                              record.status === "OPEN"
-                                ? "danger"
-                                : record.status === "RECOVERED"
-                                ? "success"
-                                : "neutral"
-                            }
-                          >
-                            {record.status}
-                          </Badge>
-                          {record.auto_recovered && (
-                            <small className="mt-0.5 block text-[9px] text-success">Auto-recovered</small>
-                          )}
-                          {record.resolved_by && (
-                            <small className="mt-0.5 block text-[9px] text-ink-faint">
-                              by {record.resolved_by}
-                            </small>
-                          )}
-                        </td>
-
-                        {/* Actions */}
-                        <td className="px-3.5 py-3 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => onInspect(record)}
-                              title="Lihat Detail Perbedaan"
-                            >
-                              <Eye className="size-3.5" /> Detail
-                            </Button>
-
-                            {isOpen && (
-                              <Button
-                                variant="default"
-                                size="sm"
-                                onClick={() => onRecover(record)}
-                                disabled={isRowRecovering}
-                                className="bg-brand hover:bg-brand-bright"
-                              >
-                                {isRowRecovering ? (
-                                  <>
-                                    <LoaderCircle className="size-3.5 animate-spin" /> Memulihkan...
-                                  </>
-                                ) : (
-                                  <>
-                                    <ShieldCheck className="size-3.5" /> Pulihkan
-                                  </>
-                                )}
-                              </Button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
+                    return <tr key={record.id} role="button" tabIndex={0} aria-label={`${record.resource}, ${record.table_name}, record ${record.record_id}. Open incident details.`} onClick={() => onInspect(record)} onKeyDown={(event) => handleRowKeyDown(event, () => onInspect(record))} className="cursor-pointer transition-colors hover:bg-elevated/65 focus-visible:bg-elevated/65 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/70">
+                      <td className="px-4 py-4 align-top">
+                        <code className="font-mono text-sm font-semibold text-brand-bright">{record.resource}</code>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-ink-dim"><span className="font-medium text-ink">{record.table_name}</span><span aria-hidden="true">·</span><span>Record ID: <code className="font-mono">{record.record_id}</code></span>{record.action && <><span aria-hidden="true">·</span><span className="font-mono">{record.action}</span></>}</div>
+                      </td>
+                      <td className="px-4 py-4 align-top">
+                        {discrepancies.length > 0 ? <><Badge tone="danger" className="text-[10px]">{discrepancies.length} changed {discrepancies.length === 1 ? "column" : "columns"}</Badge><p className="mt-1.5 text-xs text-ink-dim">{discrepancies.slice(0, 2).map((diff) => diff.field).join(", ")}{discrepancies.length > 2 ? ` +${discrepancies.length - 2} more` : ""}</p></> : <span className="text-xs text-ink-dim">Row hash mismatch</span>}
+                        {record.recovery_error && <small className="mt-1 block max-w-52 truncate text-xs text-warning" title={record.recovery_error}>Recovery note: {record.recovery_error}</small>}
+                      </td>
+                      <td className="px-4 py-4 align-top"><div className="space-y-1.5 font-mono text-xs"><HashLine label="Ref" value={record.expected_hash} tone="text-success" /><HashLine label="Client" value={record.actual_hash} tone="text-danger" /></div></td>
+                      <td className="px-4 py-4 align-top text-sm text-ink-dim"><div>{formatRecoveryDate(record.detected_at)}</div>{record.last_confirmed_at && <small className="mt-1 block text-xs text-ink-faint">Last scan: {formatRecoveryDate(record.last_confirmed_at)}</small>}</td>
+                      <td className="px-4 py-4 align-top"><Badge tone={record.status === "OPEN" ? "danger" : record.status === "RECOVERED" ? "success" : "neutral"} className="text-[10px]">{formatStatus(record.status)}</Badge>{record.auto_recovered && <small className="mt-1.5 block text-xs text-success">Automatically recovered</small>}{record.resolved_by && <small className="mt-1 block text-xs text-ink-dim">by {record.resolved_by}</small>}</td>
+                      <td className="px-4 py-4 text-right align-top"><div className="flex items-center justify-end gap-2">
+                        <Button variant="ghost" size="sm" onClick={(event) => { event.stopPropagation(); onInspect(record); }} onKeyDown={(event) => event.stopPropagation()} title="View incident details"><Eye className="size-4" /><span className="hidden lg:inline">Details</span></Button>
+                        {isOpen && <Button size="sm" onClick={(event) => { event.stopPropagation(); onRecover(record); }} onKeyDown={(event) => event.stopPropagation()} disabled={isRowRecovering} className="bg-brand hover:bg-brand-bright">{isRowRecovering ? <LoaderCircle className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />}<span className="hidden lg:inline">{isRowRecovering ? "Recovering…" : "Recover"}</span></Button>}
+                      </div></td>
+                    </tr>;
                   })}
                 </tbody>
               </table>
@@ -317,4 +109,94 @@ export function ClientTamperTable({
       </Card>
     </div>
   );
+}
+
+function handleRowKeyDown(event: KeyboardEvent<HTMLTableRowElement>, open: () => void) {
+  if (event.target !== event.currentTarget) return;
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    open();
+  }
+}
+
+function HashLine({ label, value, tone }: { label: string; value?: string; tone: string }) {
+  const preview = value ? value.length > 24 ? `${value.slice(0, 12)}…${value.slice(-8)}` : value : "Unavailable";
+  return <div className={`flex items-start gap-2 ${tone}`} title={value || undefined}><span className="w-11 shrink-0 text-ink-faint">{label}:</span><code className="break-all">{preview}</code></div>;
+}
+
+function formatStatus(value: string) {
+  return value.replaceAll("_", " ").toLowerCase().replace(/(^|\s)\S/g, (letter) => letter.toUpperCase());
+}
+
+function TableSelect({ value, options, onChange }: { value: string; options: string[]; onChange: (value: string) => void }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [knownTables, setKnownTables] = useState<string[]>([]);
+  const selectedValue = value.toUpperCase();
+  const menuOptions = ["ALL TABLES", ...knownTables];
+  const selectedIndex = value ? menuOptions.findIndex((option) => option === selectedValue) : 0;
+
+  useEffect(() => {
+    setKnownTables((current) => Array.from(new Set([...current, ...options, ...(value ? [selectedValue] : [])])).sort());
+  }, [options, selectedValue, value]);
+
+  useEffect(() => {
+    if (!open) return;
+    const selected = selectedIndex >= 0 ? selectedIndex : 0;
+    setActiveIndex(selected);
+    optionRefs.current[selected]?.focus();
+  }, [open, selectedIndex]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [open]);
+
+  const openMenu = () => {
+    setActiveIndex(selectedIndex >= 0 ? selectedIndex : 0);
+    setOpen(true);
+  };
+
+  const handleMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") { event.preventDefault(); setOpen(false); triggerRef.current?.focus(); return; }
+    let next = activeIndex;
+    if (event.key === "ArrowDown") next = (activeIndex + 1) % menuOptions.length;
+    else if (event.key === "ArrowUp") next = (activeIndex - 1 + menuOptions.length) % menuOptions.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = menuOptions.length - 1;
+    else if (event.key === "Enter" || event.key === " ") { event.preventDefault(); choose(activeIndex === 0 ? "" : menuOptions[activeIndex] ?? ""); return; }
+    else if (event.key === "Tab") { setOpen(false); return; }
+    else return;
+    event.preventDefault();
+    setActiveIndex(next);
+    optionRefs.current[next]?.focus();
+  };
+
+  function choose(nextValue: string) {
+    onChange(nextValue);
+    setOpen(false);
+    triggerRef.current?.focus();
+  }
+
+  const currentIndex = selectedIndex;
+
+  return <div ref={rootRef} className="relative shrink-0">
+    <button ref={triggerRef} type="button" aria-haspopup="listbox" aria-expanded={open} onClick={() => open ? setOpen(false) : openMenu()} onKeyDown={(event) => {
+      if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") { event.preventDefault(); openMenu(); }
+    }} className="flex h-11 items-center gap-2.5 rounded-lg border border-line-strong bg-ground px-3.5 text-sm text-ink transition-colors hover:border-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60">
+      <Filter className="size-4 text-ink-dim" /><span className="text-ink-dim">Table</span><span className="max-w-36 truncate font-medium">{value ? selectedValue : "All tables"}</span><ChevronDown className={`size-4 text-ink-dim transition-transform ${open ? "rotate-180" : ""}`} />
+    </button>
+    {open && <div role="listbox" aria-label="Filter by table" aria-activedescendant={`table-option-${activeIndex}`} onKeyDown={handleMenuKeyDown} className="absolute right-0 top-[calc(100%+0.5rem)] z-30 max-h-72 w-60 overflow-y-auto rounded-xl border border-line-strong bg-panel p-1.5 shadow-2xl">
+      {menuOptions.map((option, index) => <button key={option} ref={(element) => { optionRefs.current[index] = element; }} id={`table-option-${index}`} type="button" role="option" aria-selected={currentIndex === index} tabIndex={-1} onMouseEnter={() => setActiveIndex(index)} onClick={() => choose(index === 0 ? "" : option)} className={cn("flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm transition-colors focus-visible:bg-elevated focus-visible:outline-none", currentIndex === index ? "bg-navy-bright/20 text-ink" : "text-ink-dim hover:bg-elevated hover:text-ink")}>
+        <span>{index === 0 ? "All tables" : option}</span>{currentIndex === index && <Check className="size-4 text-brand-bright" />}
+      </button>)}
+    </div>}
+  </div>;
 }

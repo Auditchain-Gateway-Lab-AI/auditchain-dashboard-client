@@ -34,20 +34,20 @@ const newIdempotencyKey = () => {
 
 export function recoveryErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.status === 0) return "Gateway tidak dapat dihubungi. Periksa koneksi lalu coba lagi.";
-    if (error.status === 401) return "Sesi berakhir. Silakan login kembali.";
-    if (error.status === 403) return "Akun ini tidak memiliki izin untuk menjalankan recovery.";
-    if (error.status === 404) return "Gateway membalas 404 untuk API Recovery. Pastikan versi Gateway memiliki route Recovery dan RECOVERY_ENABLED=true.";
-    if (error.status === 409) return `Kondisi recovery berubah: ${error.message}`;
-    if (error.status === 503) return "Agent, Fabric, atau layanan recovery sedang tidak tersedia.";
-    return error.message || "Permintaan recovery gagal.";
+    if (error.status === 0) return "The gateway could not be reached. Check your connection and try again.";
+    if (error.status === 401) return "Your session has expired. Sign in again.";
+    if (error.status === 403) return "Your account is not allowed to run recovery.";
+    if (error.status === 404) return "The recovery API route was not found. Confirm the gateway supports recovery and RECOVERY_ENABLED is true.";
+    if (error.status === 409) return `The recovery state changed: ${error.message}`;
+    if (error.status === 503) return "The Agent, Fabric, or recovery service is unavailable.";
+    return error.message || "The recovery request failed.";
   }
-  return error instanceof Error ? error.message : "Permintaan recovery gagal.";
+  return error instanceof Error ? error.message : "The recovery request failed.";
 }
 
 export class ApiRecoveryService implements RecoveryService {
   async getIncidents(token?: string): Promise<RecoveryIncident[]> {
-    if (!token) throw new Error("Session client tidak tersedia.");
+    if (!token) throw new Error("Client session is unavailable.");
     const response = await apiClient.get<DataEnvelope<RecoveryIncident[]>>(
       "/dashboard/recovery/incidents",
       token,
@@ -56,7 +56,7 @@ export class ApiRecoveryService implements RecoveryService {
   }
 
   async getRequests(token?: string): Promise<RecoveryRequest[]> {
-    if (!token) throw new Error("Session client tidak tersedia.");
+    if (!token) throw new Error("Client session is unavailable.");
     const response = await apiClient.get<DataEnvelope<RecoveryRequest[]>>(
       "/dashboard/recovery/requests",
       token,
@@ -65,7 +65,7 @@ export class ApiRecoveryService implements RecoveryService {
   }
 
   async getHistory(token?: string, page = 1): Promise<RecoveryEventPage> {
-    if (!token) throw new Error("Session client tidak tersedia.");
+    if (!token) throw new Error("Client session is unavailable.");
     const params = new URLSearchParams({ page: String(Math.max(1, page)), page_size: "100", include_legacy: "false" });
     return apiClient.get<RecoveryEventPage>(
       `/dashboard/recovery/events?${params.toString()}`,
@@ -74,7 +74,7 @@ export class ApiRecoveryService implements RecoveryService {
   }
 
   async getIncident(token: string | undefined, incidentId: string): Promise<RecoveryIncidentDetail> {
-    if (!token) throw new Error("Session client tidak tersedia.");
+    if (!token) throw new Error("Client session is unavailable.");
     const response = await apiClient.get<DataEnvelope<RecoveryIncidentDetail>>(
       `/dashboard/recovery/incidents/${encodeURIComponent(incidentId)}`,
       token,
@@ -83,7 +83,7 @@ export class ApiRecoveryService implements RecoveryService {
   }
 
   async getCandidates(token: string | undefined, incidentId: string): Promise<RecoveryCandidate[]> {
-    if (!token) throw new Error("Session client tidak tersedia.");
+    if (!token) throw new Error("Client session is unavailable.");
     const response = await apiClient.get<DataEnvelope<RecoveryCandidate[]>>(
       `/dashboard/recovery/incidents/${encodeURIComponent(incidentId)}/candidates`,
       token,
@@ -93,7 +93,7 @@ export class ApiRecoveryService implements RecoveryService {
   }
 
   async runPreflight(token: string | undefined, incidentId: string): Promise<RecoveryPreflight> {
-    if (!token) throw new Error("Session client tidak tersedia.");
+    if (!token) throw new Error("Client session is unavailable.");
     return apiClient.post<RecoveryPreflight>(
       `/dashboard/recovery/incidents/${encodeURIComponent(incidentId)}/preflight`,
       {},
@@ -105,7 +105,7 @@ export class ApiRecoveryService implements RecoveryService {
     token: string | undefined,
     input: CreateRecoveryRequestInput,
   ): Promise<RecoveryRequest> {
-    if (!token) throw new Error("Session client tidak tersedia.");
+    if (!token) throw new Error("Client session is unavailable.");
     const payload = {
       ...input,
       idempotency_key: input.idempotency_key || newIdempotencyKey(),
@@ -119,7 +119,7 @@ export class ApiRecoveryService implements RecoveryService {
   }
 
   async executeRequest(token: string | undefined, requestId: string): Promise<RecoveryRequest> {
-    if (!token) throw new Error("Session client tidak tersedia.");
+    if (!token) throw new Error("Client session is unavailable.");
     const response = await apiClient.post<DataEnvelope<RecoveryRequest>>(
       `/dashboard/recovery/requests/${encodeURIComponent(requestId)}/execute`,
       {},
@@ -129,7 +129,7 @@ export class ApiRecoveryService implements RecoveryService {
   }
 
   async getRequest(token: string | undefined, requestId: string): Promise<RecoveryRequest> {
-    if (!token) throw new Error("Session client tidak tersedia.");
+    if (!token) throw new Error("Client session is unavailable.");
     const response = await apiClient.get<DataEnvelope<RecoveryRequest>>(
       `/dashboard/recovery/requests/${encodeURIComponent(requestId)}`,
       token,
@@ -138,7 +138,7 @@ export class ApiRecoveryService implements RecoveryService {
   }
 
   async getEvent(token: string | undefined, eventId: string): Promise<RecoveryEvent> {
-    if (!token) throw new Error("Session client tidak tersedia.");
+    if (!token) throw new Error("Client session is unavailable.");
     const response = await apiClient.get<DataEnvelope<RecoveryEvent>>(
       `/dashboard/recovery/events/${encodeURIComponent(eventId)}`,
       token,
@@ -147,7 +147,7 @@ export class ApiRecoveryService implements RecoveryService {
   }
 
   async getClientTamperRecords(token?: string, query?: ClientTamperQuery): Promise<ClientTamperListResponse> {
-    if (!token) throw new Error("Session client tidak tersedia.");
+    if (!token) throw new Error("Client session is unavailable.");
     const params = new URLSearchParams();
     if (query?.status) params.set("status", query.status);
     if (query?.table_name) params.set("table_name", query.table_name);
@@ -162,12 +162,12 @@ export class ApiRecoveryService implements RecoveryService {
   }
 
   async getClientTamperRecord(token: string | undefined, id: string): Promise<ClientDataTamperRecord> {
-    if (!token) throw new Error("Session client tidak tersedia.");
+    if (!token) throw new Error("Client session is unavailable.");
     return apiClient.get<ClientDataTamperRecord>(`/dashboard/client-tampering/${encodeURIComponent(id)}`, token);
   }
 
   async recoverClientTamperRecord(token: string | undefined, id: string): Promise<ClientTamperRecoverResponse> {
-    if (!token) throw new Error("Session client tidak tersedia.");
+    if (!token) throw new Error("Client session is unavailable.");
     return apiClient.post<ClientTamperRecoverResponse>(
       `/dashboard/client-tampering/${encodeURIComponent(id)}/recover`,
       {},
@@ -176,7 +176,7 @@ export class ApiRecoveryService implements RecoveryService {
   }
 
   async dismissClientTamperRecord(token: string | undefined, id: string, notes?: string): Promise<ClientDataTamperRecord> {
-    if (!token) throw new Error("Session client tidak tersedia.");
+    if (!token) throw new Error("Client session is unavailable.");
     return apiClient.post<ClientDataTamperRecord>(
       `/dashboard/client-tampering/${encodeURIComponent(id)}/dismiss`,
       { notes: notes || "" },

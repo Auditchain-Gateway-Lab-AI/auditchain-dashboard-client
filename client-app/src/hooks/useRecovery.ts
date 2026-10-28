@@ -32,6 +32,7 @@ export function useRecoveryData(historyPage = 1) {
     refetchInterval: (query) => query.state.data?.some((request) =>
       activeRequestStatuses.has(String(request.status).toUpperCase()),
     ) ? recoveryPollMs : false,
+    refetchIntervalInBackground: true,
     refetchOnWindowFocus: (query) => !query.state.error,
     refetchOnReconnect: (query) => !query.state.error,
   });
@@ -46,6 +47,7 @@ export function useRecoveryData(historyPage = 1) {
         activeRequestStatuses.has(String(request.status).toUpperCase()),
       ) ? recoveryPollMs : 30_000;
     },
+    refetchIntervalInBackground: true,
     refetchOnWindowFocus: (query) => !query.state.error,
     refetchOnReconnect: (query) => !query.state.error,
   });
@@ -61,6 +63,7 @@ export function useRecoveryData(historyPage = 1) {
         activeRequestStatuses.has(String(request.status).toUpperCase()),
       ) ? recoveryPollMs : 30_000;
     },
+    refetchIntervalInBackground: true,
     refetchOnWindowFocus: (query) => !query.state.error,
     refetchOnReconnect: (query) => !query.state.error,
   });
@@ -98,6 +101,10 @@ export function useClientTamperRecords(query?: ClientTamperQuery) {
     queryFn: () => recoveryService.getClientTamperRecords?.(token, query),
     enabled: Boolean(token),
     refetchInterval: 30_000,
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+    retry: retryRecoveryQuery,
   });
 }
 
