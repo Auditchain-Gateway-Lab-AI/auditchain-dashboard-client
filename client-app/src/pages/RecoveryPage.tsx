@@ -43,7 +43,8 @@ export function RecoveryPage() {
     page_size: 100,
   }), [statusFilter, tableFilter, searchQuery]);
 
-  const { data: tamperData, isLoading: isTamperLoading, refetch: refetchTamper } = useClientTamperRecords(tamperQuery);
+  const tamperQuery = useClientTamperRecords(tamperFilters);
+  const { data: tamperData, isLoading: isTamperLoading, isFetching: isTamperFetching } = tamperQuery;
   const recoverMutation = useRecoverClientTamper();
   const dismissMutation = useDismissClientTamper();
 
@@ -118,22 +119,22 @@ export function RecoveryPage() {
   }
 
   return (
-    <main className="space-y-3 px-3 pb-8 pt-5 lg:px-4">
+    <main className="recovery-page space-y-4 px-3 pb-8 pt-6 lg:px-5">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
             <ShieldCheck className="size-4 text-brand-bright" />
-            <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-brand-bright">
-              Audit Eksternal & Operasi Pemulihan
+            <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-brand-bright">
+              External Audit & Recovery Operations
             </span>
             <Badge tone="success">External Audit Live</Badge>
           </div>
           <h1 className="mt-1 text-[27px] font-semibold tracking-tight text-ink">
-            Pemulihan Data Klien (Client Data Recovery)
+            Client Data Recovery
           </h1>
-          <p className="mt-1 max-w-2xl text-xs text-ink-dim">
-            Pantau dan pulihkan perbedaan antara data aktual di database klien vs log offchain & blockchain. Tindakan pemulihan akan mengirim instruksi ke Agent untuk memperbarui baris data di database klien ke nilai sah.
+          <p className="mt-1 max-w-2xl text-sm leading-relaxed text-ink-dim">
+            Monitor differences between client database rows and verified off-chain and blockchain records. Recovery asks the client agent to restore the authorized row data.
           </p>
         </div>
         <Button
@@ -147,12 +148,12 @@ export function RecoveryPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-3">
         <SummaryCard
           icon={ShieldAlert}
-          label="Insiden Terdeteksi (Open)"
+          label="Open incidents"
           value={openCount}
-          detail="Manipulasi data aktual di database klien"
+          detail="Client rows with integrity mismatches"
           tone="danger"
           onClick={() => {
             setTab("incidents");
@@ -161,9 +162,9 @@ export function RecoveryPage() {
         />
         <SummaryCard
           icon={CheckCircle2}
-          label="Data Berhasil Dipulihkan"
+          label="Recovered"
           value={recoveredCount}
-          detail="Telah direstore kembali ke database klien"
+          detail="Rows restored from verified records"
           tone="success"
           onClick={() => {
             setTab("history");
@@ -172,9 +173,9 @@ export function RecoveryPage() {
         />
         <SummaryCard
           icon={History}
-          label="Insiden Diabaikan"
+          label="Dismissed"
           value={dismissedCount}
-          detail="Ditandai diabaikan / verifikasi selesai"
+          detail="Incidents marked as reviewed"
           tone="info"
           onClick={() => {
             setTab("incidents");
@@ -186,11 +187,10 @@ export function RecoveryPage() {
       {/* Action Feedback Banner */}
       {feedback && (
         <div
-          className={`flex items-center justify-between rounded-lg border p-3 text-xs transition-all ${
-            feedback.type === "success"
+          className={`flex items-center justify-between rounded-lg border p-3 text-xs transition-all ${feedback.type === "success"
               ? "border-success/30 bg-success/10 text-success"
               : "border-danger/30 bg-danger/10 text-danger"
-          }`}
+            }`}
         >
           <div className="flex items-center gap-2">
             {feedback.type === "success" ? (
@@ -211,7 +211,7 @@ export function RecoveryPage() {
       )}
 
       {/* Navigation Tabs */}
-      <div className="flex w-full gap-1 overflow-x-auto rounded-lg border border-line bg-panel p-1 sm:w-auto" role="tablist">
+      <div className="flex w-full gap-1 overflow-x-auto rounded-xl border border-line bg-panel p-1.5 sm:w-auto" role="tablist" aria-label="Recovery sections">
         <Button
           variant="ghost"
           size="sm"
@@ -220,7 +220,7 @@ export function RecoveryPage() {
           onClick={() => setTab("incidents")}
           className={`shrink-0 ${tab === "incidents" ? "bg-navy-bright/25 text-ink ring-1 ring-brand-bright/30" : ""}`}
         >
-          <Database className="size-3.5" /> Insiden Manipulasi Database Klien
+          <Database className="size-4" /> Client integrity incidents
         </Button>
         <Button
           variant="ghost"
@@ -250,7 +250,6 @@ export function RecoveryPage() {
           onRecover={(rec) => handleRecover(rec.id)}
           recoveringId={recoverMutation.isPending && recoverMutation.variables ? (recoverMutation.variables as any).id : null}
           isLoading={isTamperLoading}
-          onRefresh={handleRefresh}
         />
       )}
 
@@ -273,7 +272,7 @@ export function RecoveryPage() {
       {/* Detail & Recovery Slide-over Drawer */}
       {selectedRecord && (
         <ClientTamperDrawer
-          record={selectedRecord}
+          record={records.find((record) => record.id === selectedRecord.id) ?? selectedRecord}
           onClose={() => setSelectedRecord(null)}
           onRecover={handleRecover}
           onDismiss={handleDismiss}

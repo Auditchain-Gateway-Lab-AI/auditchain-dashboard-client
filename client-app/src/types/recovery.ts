@@ -186,7 +186,16 @@ export interface ClientDataTamperRecord {
   action?: string;
   expected_hash: string;
   actual_hash: string;
-  discrepancies?: string | Array<{ field?: string; client_value?: unknown; offchain_value?: unknown }>;
+  discrepancies?: string | Array<{
+    field?: string;
+    column?: string;
+    expected?: unknown;
+    actual?: unknown;
+    in_log?: unknown;
+    in_agent?: unknown;
+    offchain_value?: unknown;
+    client_value?: unknown;
+  }>;
   blockchain_tx_id?: string;
   status: "OPEN" | "RECOVERED" | "DISMISSED" | string;
   auto_recovered: boolean;
