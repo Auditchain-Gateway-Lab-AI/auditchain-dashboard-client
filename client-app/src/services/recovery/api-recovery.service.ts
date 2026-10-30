@@ -1,6 +1,8 @@
 import { apiClient, ApiError } from "@/services/api/client";
 import type {
   ClientDataTamperRecord,
+  ClientRecoveryEventListResponse,
+  ClientRecoveryEventQuery,
   ClientTamperListResponse,
   ClientTamperQuery,
   ClientTamperRecoverResponse,
@@ -182,6 +184,21 @@ export class ApiRecoveryService implements RecoveryService {
       { notes: notes || "" },
       token,
     );
+  }
+
+  async getClientRecoveryEvents(token?: string, query?: ClientRecoveryEventQuery): Promise<ClientRecoveryEventListResponse> {
+    if (!token) throw new Error("Session client tidak tersedia.");
+    const params = new URLSearchParams();
+    if (query?.status) params.set("status", query.status);
+    if (query?.table_name) params.set("table_name", query.table_name);
+    if (query?.resource) params.set("resource", query.resource);
+    if (query?.search) params.set("search", query.search);
+    if (query?.page) params.set("page", String(query.page));
+    if (query?.page_size) params.set("page_size", String(query.page_size));
+
+    const qs = params.toString();
+    const endpoint = `/dashboard/client-recovery/events${qs ? `?${qs}` : ""}`;
+    return apiClient.get<ClientRecoveryEventListResponse>(endpoint, token);
   }
 }
 

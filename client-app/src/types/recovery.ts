@@ -228,3 +228,45 @@ export interface ClientTamperRecoverResponse {
   result?: unknown;
   message: string;
 }
+
+
+export interface ClientRecoveryEvent {
+  id: string;
+  client_id: string;
+  tamper_record_id?: string;
+  resource: string;
+  table_name: string;
+  record_id: string;
+  log_id?: string;
+  operation?: string;
+  recovered_columns?: string | string[];
+  recovered_data?: string | Record<string, unknown>;
+  status: "SUCCESS" | "FAILED" | string;
+  error_message?: string;
+  recovered_by: string;
+  executed_at: string;
+}
+
+export interface ClientRecoveryEventQuery {
+  status?: string;
+  table_name?: string;
+  resource?: string;
+  search?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface ClientRecoveryEventSummaryCounts {
+  success_count: number;
+  failed_count: number;
+  total_count: number;
+}
+
+export interface ClientRecoveryEventListResponse {
+  events: ClientRecoveryEvent[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  summary: ClientRecoveryEventSummaryCounts;
+}
