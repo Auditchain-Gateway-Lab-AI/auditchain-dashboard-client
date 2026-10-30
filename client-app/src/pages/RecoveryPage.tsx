@@ -1,37 +1,41 @@
-import { AlertCircle, CheckCircle2, Database, History, LoaderCircle, ShieldAlert, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Database, History, RotateCw, ShieldAlert, ShieldCheck, X } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ClientRecoveryHistoryTable } from "@/components/recovery/ClientRecoveryHistoryTable";
 import { ClientTamperDrawer } from "@/components/recovery/ClientTamperDrawer";
 import { ClientTamperTable } from "@/components/recovery/ClientTamperTable";
-import { RecoveryHistory } from "@/components/recovery/RecoveryHistory";
 import {
+  useClientRecoveryEvents,
   useClientTamperRecords,
   useDismissClientTamper,
   useRecoverClientTamper,
-  useRecoveryData,
 } from "@/hooks/useRecovery";
-import { formatRecoveryDate } from "@/components/recovery/client-tamper-utils";
-import type { ClientDataTamperRecord, RecoveryEventPage } from "@/types/recovery";
+import type { ClientDataTamperRecord } from "@/types/recovery";
 
 type RecoveryTab = "incidents" | "history";
-type HistoryFilter = "ALL" | "SUCCEEDED" | "NEEDS_REVIEW";
-
-const EMPTY_HISTORY: RecoveryEventPage = { data: [], page: 1, page_size: 100, total_items: 0, total_pages: 0 };
 
 export function RecoveryPage() {
   const [tab, setTab] = useState<RecoveryTab>("incidents");
+
+  // Tab 1 (Incidents) filters
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [tableFilter, setTableFilter] = useState("");
-  const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("ALL");
-  const [historyPage, setHistoryPage] = useState(1);
+
+  // Tab 2 (Recovery History) filters
+  const [historyStatusFilter, setHistoryStatusFilter] = useState<string>("ALL");
+  const [historySearchQuery, setHistorySearchQuery] = useState("");
+  const [historyTableFilter, setHistoryTableFilter] = useState("");
+
+  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<ClientDataTamperRecord | null>(null);
 
-  // External Audit Client Tampering Data (Primary)
-  const tamperFilters = useMemo(() => ({
+  // External Audit Client Tampering Data (Tab 1)
+  const tamperQuery = useMemo(() => ({
     status: statusFilter === "ALL" ? undefined : statusFilter,
     table_name: tableFilter || undefined,
     search: searchQuery || undefined,
@@ -44,9 +48,20 @@ export function RecoveryPage() {
   const recoverMutation = useRecoverClientTamper();
   const dismissMutation = useDismissClientTamper();
 
-  // Legacy/Internal recovery history query (Secondary)
-  const recovery = useRecoveryData(historyPage);
-  const history = recovery.history.data ?? EMPTY_HISTORY;
+  // Client Recovery Events Data (Tab 2)
+  const historyQuery = useMemo(() => ({
+    status: historyStatusFilter === "ALL" ? undefined : historyStatusFilter,
+    table_name: historyTableFilter || undefined,
+    search: historySearchQuery || undefined,
+    page: 1,
+    page_size: 100,
+  }), [historyStatusFilter, historyTableFilter, historySearchQuery]);
+
+  const {
+    data: historyData,
+    isLoading: isHistoryLoading,
+    refetch: refetchHistory,
+  } = useClientRecoveryEvents(historyQuery);
 
   const records = tamperData?.records ?? [];
   const summary = tamperData?.summary;
@@ -54,23 +69,54 @@ export function RecoveryPage() {
   const recoveredCount = summary?.recovered_count ?? records.filter((r) => r.status === "RECOVERED").length;
   const dismissedCount = summary?.dismissed_count ?? records.filter((r) => r.status === "DISMISSED").length;
 
-  const syncedAtValues = [tamperData ? tamperQuery.dataUpdatedAt : 0, recovery.incidents.dataUpdatedAt, recovery.history.dataUpdatedAt]
-    .filter((timestamp) => timestamp > 0);
-  const lastSyncedAt = syncedAtValues.length ? Math.min(...syncedAtValues) : 0;
-  const syncError = tamperQuery.isError || recovery.incidents.isError || recovery.requests.isError || recovery.history.isError;
-  const isSyncing = isTamperFetching || recovery.incidents.isFetching || recovery.history.isFetching;
+  const handleRefresh = async () => {
+    await Promise.all([refetchTamper(), refetchHistory()]);
+  };
 
   const handleRecover = async (id: string) => {
-    const response = await recoverMutation.mutateAsync({ id });
-    if (selectedRecord?.id === id && response?.record) setSelectedRecord(response.record);
+    setFeedback(null);
+    try {
+      const res = await recoverMutation.mutateAsync({ id });
+      setFeedback({
+        type: "success",
+        message: (res as any)?.message || "Baris data berhasil dipulihkan pada database operasional klien.",
+      });
+      if (selectedRecord && selectedRecord.id === id) {
+        setSelectedRecord(null);
+      }
+      refetchHistory();
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || err?.message || "Gagal memulihkan data klien";
+      setFeedback({
+        type: "error",
+        message: msg,
+      });
+    }
   };
 
   const handleDismiss = async (id: string, notes?: string) => {
-    const record = await dismissMutation.mutateAsync({ id, notes });
-    if (selectedRecord?.id === id) setSelectedRecord(record);
+    setFeedback(null);
+    try {
+      await dismissMutation.mutateAsync({ id, notes });
+      setFeedback({
+        type: "success",
+        message: "Insiden manipulasi data berhasil diabaikan.",
+      });
+      if (selectedRecord && selectedRecord.id === id) {
+        setSelectedRecord(null);
+      }
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || err?.message || "Gagal mengabaikan insiden";
+      setFeedback({
+        type: "error",
+        message: msg,
+      });
+    }
   };
 
-  if (isTamperLoading && !tamperData) return <RecoverySkeleton />;
+  if (isTamperLoading && !tamperData && isHistoryLoading && !historyData) {
+    return <RecoverySkeleton />;
+  }
 
   return (
     <main className="recovery-page space-y-4 px-3 pb-8 pt-6 lg:px-5">
@@ -91,10 +137,14 @@ export function RecoveryPage() {
             Monitor differences between client database rows and verified off-chain and blockchain records. Recovery asks the client agent to restore the authorized row data.
           </p>
         </div>
-        <div className={`flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs ${syncError ? "border-warning/30 bg-warning/10 text-warning" : "border-line bg-panel text-ink-dim"}`} role="status" aria-live="polite">
-          {syncError ? <AlertCircle className="size-4 shrink-0" /> : isSyncing ? <LoaderCircle className="size-4 shrink-0 animate-spin" /> : <CheckCircle2 className="size-4 shrink-0 text-success" />}
-          <span className="leading-snug">{syncError ? "Sync delayed" : isSyncing ? "Syncing" : "Last synced"}<span className="ml-1.5 font-mono text-ink">{lastSyncedAt ? formatRecoveryDate(lastSyncedAt) : "Waiting for first sync"}</span></span>
-        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRefresh}
+          disabled={isTamperLoading || isHistoryLoading}
+        >
+          <RotateCw className={`size-3.5 ${(isTamperLoading || isHistoryLoading) ? "animate-spin" : ""}`} /> Segarkan
+        </Button>
       </div>
 
       {/* Summary Cards */}
@@ -117,8 +167,8 @@ export function RecoveryPage() {
           detail="Rows restored from verified records"
           tone="success"
           onClick={() => {
-            setTab("incidents");
-            setStatusFilter("RECOVERED");
+            setTab("history");
+            setHistoryStatusFilter("SUCCESS");
           }}
         />
         <SummaryCard
@@ -133,6 +183,32 @@ export function RecoveryPage() {
           }}
         />
       </div>
+
+      {/* Action Feedback Banner */}
+      {feedback && (
+        <div
+          className={`flex items-center justify-between rounded-lg border p-3 text-xs transition-all ${feedback.type === "success"
+              ? "border-success/30 bg-success/10 text-success"
+              : "border-danger/30 bg-danger/10 text-danger"
+            }`}
+        >
+          <div className="flex items-center gap-2">
+            {feedback.type === "success" ? (
+              <CheckCircle2 className="size-4 shrink-0" />
+            ) : (
+              <AlertTriangle className="size-4 shrink-0" />
+            )}
+            <span className="font-medium">{feedback.message}</span>
+          </div>
+          <button
+            onClick={() => setFeedback(null)}
+            className="cursor-pointer ml-2 p-0.5 opacity-70 hover:opacity-100"
+            title="Tutup pemberitahuan"
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Navigation Tabs */}
       <div className="flex w-full gap-1 overflow-x-auto rounded-xl border border-line bg-panel p-1.5 sm:w-auto" role="tablist" aria-label="Recovery sections">
@@ -154,7 +230,7 @@ export function RecoveryPage() {
           onClick={() => setTab("history")}
           className={`shrink-0 ${tab === "history" ? "bg-navy-bright/25 text-ink ring-1 ring-brand-bright/30" : ""}`}
         >
-          <History className="size-4" /> Recovery history
+          <History className="size-3.5" /> Riwayat Pemulihan Data Klien
         </Button>
       </div>
 
@@ -178,12 +254,18 @@ export function RecoveryPage() {
       )}
 
       {tab === "history" && (
-        <RecoveryHistory
-          data={history}
-          filter={historyFilter}
-          onFilterChange={setHistoryFilter}
-          onPageChange={setHistoryPage}
-          isFetching={recovery.history.isFetching}
+        <ClientRecoveryHistoryTable
+          events={historyData?.events ?? []}
+          summary={historyData?.summary}
+          total={historyData?.total ?? 0}
+          statusFilter={historyStatusFilter}
+          onStatusChange={setHistoryStatusFilter}
+          searchQuery={historySearchQuery}
+          onSearchChange={setHistorySearchQuery}
+          tableFilter={historyTableFilter}
+          onTableChange={setHistoryTableFilter}
+          isLoading={isHistoryLoading}
+          onRefresh={handleRefresh}
         />
       )}
 
@@ -210,54 +292,44 @@ function SummaryCard({
   tone,
   onClick,
 }: {
-  icon: any;
+  icon: typeof ShieldAlert;
   label: string;
   value: number;
   detail: string;
-  tone: "success" | "danger" | "info";
-  onClick: () => void;
+  tone: "danger" | "success" | "info";
+  onClick?: () => void;
 }) {
-  const iconClass =
-    tone === "success"
-      ? "bg-success/10 text-success"
-      : tone === "danger"
-      ? "bg-danger/10 text-danger"
-      : "bg-info/10 text-info";
+  const toneClasses = {
+    danger: "text-danger border-danger/20 hover:border-danger/40",
+    success: "text-success border-success/20 hover:border-success/40",
+    info: "text-brand-bright border-brand-bright/20 hover:border-brand-bright/40",
+  }[tone];
+
   return (
-    <button
-      type="button"
+    <Card
+      className={`p-3.5 transition-all cursor-pointer hover:shadow-xs ${toneClasses}`}
       onClick={onClick}
-      className="flex w-full items-center gap-3 rounded-lg border border-line bg-panel px-3.5 py-3 text-left transition-colors hover:border-line-strong hover:bg-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-bright"
     >
-      <span className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${iconClass}`}>
-        <Icon className="size-4" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="flex items-baseline gap-2">
-          <strong className="font-mono text-2xl text-ink">{value}</strong>
-          <span className="truncate text-sm font-semibold text-ink-dim">{label}</span>
-        </span>
-        <span className="block truncate text-xs text-ink-dim">{detail}</span>
-      </span>
-    </button>
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-medium text-ink-dim">{label}</span>
+        <Icon className="size-4 opacity-80" />
+      </div>
+      <p className="mt-1 font-mono text-2xl font-bold tracking-tight text-ink">{value}</p>
+      <p className="mt-0.5 text-[10px] text-ink-faint truncate">{detail}</p>
+    </Card>
   );
 }
 
 function RecoverySkeleton() {
   return (
-    <main className="space-y-3 px-3 pb-8 pt-5 lg:px-4">
-      <div className="flex items-end justify-between gap-3">
-        <div>
-          <Skeleton className="h-8 w-56" />
-          <Skeleton className="mt-2 h-3 w-80" />
-        </div>
-      </div>
+    <main className="space-y-4 px-3 pb-8 pt-5 lg:px-4">
+      <Skeleton className="h-10 w-64" />
       <div className="grid gap-2 sm:grid-cols-3">
-        <Skeleton className="h-16 w-full" />
-        <Skeleton className="h-16 w-full" />
-        <Skeleton className="h-16 w-full" />
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-24 w-full" />
       </div>
-      <Skeleton className="h-[330px] w-full" />
+      <Skeleton className="h-96 w-full" />
     </main>
   );
 }

@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError } from "@/services/api/client";
 import { recoveryService } from "@/services/recovery";
-import type { ClientTamperQuery } from "@/types/recovery";
+import type { ClientRecoveryEventQuery, ClientTamperQuery } from "@/types/recovery";
 
 const activeRequestStatuses = new Set(["PENDING_EXECUTION", "EXECUTING", "APPLIED_AWAITING_CDC"]);
 const recoveryPollMs = 4_000;
@@ -120,6 +120,7 @@ export function useRecoverClientTamper() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: recoveryKeys.all(workspaceId) }),
         queryClient.invalidateQueries({ queryKey: ["recovery", workspaceId, "client-tampering"] }),
+        queryClient.invalidateQueries({ queryKey: ["recovery", workspaceId, "client-recovery-events"] }),
         queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
       ]);
     },
@@ -141,5 +142,19 @@ export function useDismissClientTamper() {
         queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
       ]);
     },
+  });
+}
+
+
+export function useClientRecoveryEvents(query?: ClientRecoveryEventQuery) {
+  const { session } = useAuth();
+  const token = session?.token;
+  const workspaceId = session?.user.workspace.id;
+
+  return useQuery({
+    queryKey: ["recovery", workspaceId, "client-recovery-events", query],
+    queryFn: () => recoveryService.getClientRecoveryEvents?.(token, query),
+    enabled: Boolean(token),
+    refetchInterval: 30_000,
   });
 }
